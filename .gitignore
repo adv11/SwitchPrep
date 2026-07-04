@@ -1,0 +1,18 @@
+# Local Firebase project credentials — copy firebase.config.example.js instead
+src/services/firebase.config.js
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Dependencies (none currently, but this is a no-build project so keep it that way)
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*

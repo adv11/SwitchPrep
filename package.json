@@ -1,0 +1,20 @@
+{
+  "name": "switchprep",
+  "version": "1.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "dev": "python3 -m http.server 4173",
+    "start": "python3 -m http.server 4173"
+  },
+  "description": "SwitchPrep is a preparation tracker for Java Spring Boot backend engineers moving toward product companies and startups.",
+  "keywords": [
+    "java",
+    "spring-boot",
+    "system-design",
+    "genai",
+    "roadmap",
+    "firebase"
+  ]
+}

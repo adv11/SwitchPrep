@@ -1,0 +1,13 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid",
+        "roadmap": {
+          ".validate": "newData.hasChildren(['version', 'items'])"
+        }
+      }
+    }
+  }
+}

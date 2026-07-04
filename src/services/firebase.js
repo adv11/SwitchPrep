@@ -1,0 +1,80 @@
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  EmailAuthProvider,
+  linkWithCredential
+} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
+import {
+  getDatabase,
+  ref,
+  onValue,
+  off,
+  set,
+  serverTimestamp
+} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js';
+import { firebaseConfig } from './firebase.config.js';
+
+const app = initializeApp(firebaseConfig);
+
+export const auth = getAuth(app);
+export const database = getDatabase(app);
+export const firebaseClock = serverTimestamp;
+
+export const authApi = {
+  onChange(callback) {
+    return onAuthStateChanged(auth, callback);
+  },
+  signIn(email, password) {
+    return signInWithEmailAndPassword(auth, email, password);
+  },
+  signUp(email, password) {
+    return createUserWithEmailAndPassword(auth, email, password);
+  },
+  async linkGuest(email, password) {
+    const user = auth.currentUser;
+    if (!user?.isAnonymous) throw new Error('No guest session to link');
+    const cred = EmailAuthProvider.credential(email, password);
+    return linkWithCredential(user, cred);
+  },
+  guest() {
+    return signInAnonymously(auth);
+  },
+  signOut() {
+    return signOut(auth);
+  }
+};
+
+export const dbApi = {
+  roadmapRef(uid) {
+    return ref(database, `users/${uid}/roadmap`);
+  },
+  listenRoadmap(uid, callback, onError) {
+    const roadmapRef = this.roadmapRef(uid);
+    onValue(roadmapRef, callback, onError);
+    return () => off(roadmapRef);
+  },
+  saveRoadmap(uid, payload) {
+    return set(this.roadmapRef(uid), payload);
+  }
+};
+
+export function authErrorMessage(error) {
+  const messages = {
+    'auth/email-already-in-use': 'That email already has an account. Use sign in instead.',
+    'auth/invalid-email': 'Enter a valid email address.',
+    'auth/invalid-login-credentials': 'Email or password is incorrect.',
+    'auth/missing-password': 'Enter your password.',
+    'auth/network-request-failed': 'Network error. Check your connection and try again.',
+    'auth/operation-not-allowed': 'This sign-in method is not enabled in Firebase Authentication.',
+    'auth/too-many-requests': 'Too many attempts. Wait a little and try again.',
+    'auth/user-not-found': 'No account found for that email.',
+    'auth/weak-password': 'Use at least 6 characters for the password.',
+    'auth/wrong-password': 'Wrong password. Please try again.'
+  };
+  return messages[error?.code] || error?.message || 'Something went wrong. Please try again.';
+}
