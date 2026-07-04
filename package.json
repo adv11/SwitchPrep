@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "python3 -m http.server 4173",
-    "start": "python3 -m http.server 4173"
+    "start": "python3 -m http.server 4173",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "description": "SwitchPrep is a preparation tracker for Java Spring Boot backend engineers moving toward product companies and startups.",
   "keywords": [
@@ -16,5 +18,9 @@
     "genai",
     "roadmap",
     "firebase"
-  ]
+  ],
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.9"
+  }
 }
