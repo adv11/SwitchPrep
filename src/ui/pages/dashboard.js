@@ -131,12 +131,14 @@ export function renderDashboard(app, { user, store }) {
       dataset: { id: item.id },
       onClick: e => {
         if (e.target.closest('[data-action]')) return;
-        store.updateItem(item.id, { done: !item.done });
+        const live = store.getSnapshot().allItems[item.id];
+        if (live) store.updateItem(item.id, { done: !live.done });
       },
       onKeydown: e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          store.updateItem(item.id, { done: !item.done });
+          const live = store.getSnapshot().allItems[item.id];
+          if (live) store.updateItem(item.id, { done: !live.done });
         }
       }
     }, [
