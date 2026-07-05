@@ -1,0 +1,134 @@
+# ADR-002: CSP + SRI security hardening — inline script extraction and CDN integrity
+
+**Date**: 2026-07-05
+**Status**: Active
+**Deciders**: solo project — adv01
+**Issue**: #25
+
+## Context
+
+SwitchPrep loads three Firebase SDK ES modules from `https://www.gstatic.com/firebasejs/10.12.5/`
+via bare CDN URLs with no integrity check. There is no Content Security Policy, leaving
+the app open to XSS-via-injected-script, clickjacking (iframe embedding), and MIME
+sniffing. The only barrier is Same-Origin Policy, which does not block script injection
+from the same page.
+
+Three concrete attack vectors closed by this ADR:
+
+1. **CDN supply-chain compromise** — a BGP hijack or DNS poisoning of `gstatic.com` could
+   serve attacker-controlled JS with full access to Firebase credentials and `localStorage`.
+2. **Injected inline scripts** — without CSP, any XSS vector that gets text into the DOM
+   (e.g., via a future `innerHTML` regression) can inject runnable scripts.
+3. **Clickjacking** — without `X-Frame-Options: DENY`, the app can be embedded in a
+   hostile `<iframe>` and overlaid with transparent UI elements to steal clicks.
+
+## Decision
+
+### Phase A — Firebase Hosting security headers (`firebase.json`)
+
+Add a `hosting` block to `firebase.json` with five headers applied to all routes:
+
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` — blocks HTTPS
+  downgrade attacks for one year, including all subdomains.
+- `X-Frame-Options: DENY` — prevents clickjacking via iframes (belt-and-suspenders with
+  CSP's `frame-ancestors 'none'`).
+- `X-Content-Type-Options: nosniff` — prevents MIME-type sniffing (e.g. loading a JSON
+  file as a script).
+- `Referrer-Policy: strict-origin-when-cross-origin` — sends only the origin (not the
+  full URL) in cross-origin `Referer` headers.
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()` — opts out of powerful
+  browser features the app does not use.
+
+### Phase B — Content Security Policy (`index.html` meta tag)
+
+The CSP requires no inline scripts. The original theme bootstrap was an inline IIFE;
+this must be extracted to an external file so the CSP's `script-src` can be limited to
+`'self' https://www.gstatic.com` without `'unsafe-inline'`.
+
+**Why external file instead of a nonce?**
+- Nonces must be generated server-side on every request. This is a fully static site
+  served by Firebase Hosting (or `python3 -m http.server` locally). There is no
+  server-side templating layer.
+- `'unsafe-hashes'` (hash-based CSP for inline scripts) is only supported in CSP Level 3
+  and is not universally supported across browser versions yet.
+- Extracting the 4-line IIFE to `src/services/themeBootstrap.js` is simpler and makes
+  the bootstrap independently testable.
+
+**The theme-before-CSS guarantee is preserved**: `themeBootstrap.js` is loaded as a
+classic `<script src="...">` (no `defer`, no `async`, no `type="module"`). The browser
+blocks HTML parsing until the script is fetched and executed, so `data-theme` is set on
+`<html>` before the CSSOM is built. This is the same timing guarantee as the original
+inline script.
+
+CSP directives chosen:
+
+| Directive | Value | Reason |
+|---|---|---|
+| `default-src` | `'self'` | Catchall — only same-origin resources allowed by default |
+| `script-src` | `'self' https://www.gstatic.com` | Firebase SDK CDN modules |
+| `style-src` | `'self' https://fonts.googleapis.com` | Google Fonts CSS |
+| `font-src` | `https://fonts.gstatic.com` | Google Fonts font files |
+| `connect-src` | `https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com` | Firebase Realtime Database (HTTPS + WebSocket), Auth REST, token refresh |
+| `img-src` | `'self' data:` | Allows inline SVG data URIs (used by favicon/icons) |
+| `frame-ancestors` | `'none'` | Belt-and-suspenders with X-Frame-Options: DENY |
+
+### Phase C — Subresource Integrity for Firebase SDK (`index.html` modulepreload)
+
+ES module imports (`import { ... } from 'https://...'`) cannot carry inline `integrity`
+attributes in the import statement itself (not yet part of the HTML spec). The correct
+mechanism is `<link rel="modulepreload" integrity="sha384-...">` in `<head>`. The browser
+validates the hash before adding the module to the module map; the subsequent dynamic
+import resolves from the (already-validated) module map.
+
+SRI hashes computed at implementation time:
+
+```
+firebase-app.js      sha384-znyovRzngjkxL8fWwERhttfl3ktWuL26X6KiQCV0M+l1dCcS8xQTASvz/uSKyxdL
+firebase-auth.js     sha384-K1EbNeOM8wMXfcJAC/swEwz6VFy4wAK+KoBXYltJg9sy6jFj0yCTWfVEgFI4tVNp
+firebase-database.js sha384-QTGc3vdsjQWaJFRX+uOJCkVRby8Q010Dat5Ve3tIKMHISniPOS3XaDLHVRlxmLE+
+```
+
+Command to regenerate:
+```sh
+curl -s https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js | openssl dgst -sha384 -binary | base64
+```
+
+## SDK upgrade process
+
+Firebase CDN URLs are versioned (`/10.12.5/`). They do not change content at a given
+version URL — but when upgrading to a new version:
+
+1. Update the import URLs in `src/services/firebase.js` to the new version path.
+2. Recompute SRI hashes for the new version (use the `openssl` command above).
+3. Update all three `integrity="sha384-..."` attributes in `index.html`.
+4. Update the hash table in this ADR.
+
+Failing to update all four of these will cause the browser to reject the module (hash
+mismatch) and the app will fail to boot.
+
+## Alternatives considered
+
+**Server-side nonce (rejected)**: Would require a Node.js server or edge function. The
+project deliberately has no server-side runtime; adding one just for CSP nonces is
+disproportionate.
+
+**`'unsafe-inline'` for script-src (rejected)**: Completely defeats the purpose of CSP
+for script injection attacks.
+
+**`'unsafe-hashes'` (deferred)**: Would allow keeping the inline IIFE with a hash-based
+CSP. Deferred because browser support is still incomplete and the inline IIFE provides no
+testing surface. The external file approach is strictly better.
+
+**No CSP at all (rejected)**: Unacceptable for a product moving toward public launch.
+Closes a class of XSS attacks at zero runtime cost.
+
+## Consequences
+
+- **Positive**: Closes CDN supply-chain, XSS-via-script-injection, and clickjacking
+  attack vectors. Mozilla Observatory grade improves from F to A (expected).
+- **Negative**: When upgrading the Firebase SDK, four places must be updated in sync
+  (import URL × 3 in `firebase.js`, integrity × 3 in `index.html`). This is documented
+  in CLAUDE.md and AGENTS.md as a mandatory convention.
+- **Neutral**: The theme bootstrap is now an externally-loadable file, which adds
+  one extra HTTP request on cold load. In practice this is preloaded by the browser
+  parser and is sub-millisecond on any CDN edge; the no-FOUC guarantee is unchanged.

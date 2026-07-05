@@ -393,3 +393,29 @@ checkbox and Breaking changes section. Extended `pr-checklist` CI job to fail wh
 changes without a `CHANGELOG.md` update or when a new module is added without an
 `architecture.md` diff. Added `issues-label-check` workflow. Added `.claude/rules/docs-sync.json`.
 Updated `CLAUDE.md` and `AGENTS.md` with the Living architecture doc convention.
+
+### 2026-07-05 — PR #TBD — CSP + SRI + security headers (issue #25)
+
+Three security layers added in one PR:
+
+**Phase A — Firebase Hosting headers**: `firebase.json` extended with a `hosting` block
+that sets five HTTP security headers on all routes: HSTS (1 year, includeSubDomains),
+`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: strict-origin-when-cross-origin`, and
+`Permissions-Policy` disabling camera/mic/geolocation.
+
+**Phase B — Content Security Policy**: CSP meta tag added to `index.html`. The existing
+inline theme-bootstrap IIFE was extracted to `src/services/themeBootstrap.js` (a classic
+`<script src="...">` — not a module, so it remains synchronous and preserves the
+no-FOUC guarantee). CSP allows `script-src 'self' https://www.gstatic.com`,
+`style-src 'self' https://fonts.googleapis.com`, `font-src https://fonts.gstatic.com`,
+`connect-src` covering Firebase Realtime Database, Auth, and token-refresh endpoints,
+and `frame-ancestors 'none'` (belt-and-suspenders with X-Frame-Options).
+
+**Phase C — SRI for Firebase SDK**: `<link rel="modulepreload" integrity="sha384-...
+crossorigin="anonymous">` entries added for all three Firebase SDK modules. Hashes
+computed at implementation time via `openssl dgst -sha384 -binary | base64`. SDK upgrade
+process documented in ADR-002 and CLAUDE.md.
+
+New files: `src/services/themeBootstrap.js`, `docs/adr/ADR-002-csp-sri-security.md`,
+`tests/unit/themeBootstrap.test.js`.

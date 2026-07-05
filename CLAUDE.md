@@ -92,6 +92,7 @@ src/services/firebase.config.js          gitignored — your real Firebase proje
 src/services/firebase.config.example.js  committed template for the file above
 src/services/roadmapStore.js  in-memory roadmap store: subscribe/notify, local + remote save
 src/services/theme.js         dark/light theme state (localStorage + system preference)
+src/services/themeBootstrap.js  synchronous classic script — sets data-theme before CSS loads (no-FOUC)
 src/ui/router.js              tiny hash router (registerRoute/navigate/startRouter)
 src/ui/dom.js                 el() DOM-builder helper, debounce, isValidUrl
 src/ui/pages/signIn.js        sign-in screen
@@ -171,13 +172,28 @@ new value). The initial boot call has `uid = null`, so the guard is skipped on f
 load. Do not restructure `setUser` in a way that removes this guard or that calls
 `loadLocal()` before clearing — that would silently re-introduce the privacy leak.
 
-**Theming**: `index.html` sets `data-theme` on `<html>` synchronously (before CSS loads)
-to avoid a flash of the wrong theme. `src/services/theme.js` owns `getTheme()` /
-`setTheme()` / `toggleTheme()` / `onThemeChange()`, persisted under the
+**Theming**: The no-FOUC theme bootstrap lives in `src/services/themeBootstrap.js` —
+a classic `<script src="...">` (no `defer`/`async`/`type="module"`) that reads
+`localStorage` and sets `data-theme` on `<html>` synchronously before CSS loads. It was
+extracted from an inline IIFE so the Content Security Policy (Issue #25) can omit
+`'unsafe-inline'`. Do not convert it to a module or add `defer`/`async` — that breaks
+the synchronous timing guarantee and causes a flash of the wrong theme. `src/services/theme.js`
+owns `getTheme()` / `setTheme()` / `toggleTheme()` / `onThemeChange()`, persisted under the
 `switchprep-theme` localStorage key; until the user makes an explicit choice, it follows
 `prefers-color-scheme` live. All colors in `app.css` are CSS custom properties defined
 once under `:root` (light) and re-defined under `:root[data-theme='dark']` — never hardcode
 a color in a component rule; add or reuse a token instead so both themes stay correct.
+
+**SRI + CSP — mandatory when loading CDN scripts.** `index.html` locks the three Firebase
+SDK modules with `<link rel="modulepreload" integrity="sha384-...">` Subresource Integrity
+hashes. When upgrading the Firebase SDK version, four things must change in lockstep:
+(1) all three import URLs in `src/services/firebase.js`, (2) all three `href` attributes
+in the `<link rel="modulepreload">` tags, (3) all three `integrity` attributes in those
+same tags, (4) the hash table in `docs/adr/ADR-002-csp-sri-security.md`. Missing any one
+of these will cause a hash mismatch and the app will fail to boot. Regenerate hashes with:
+`curl -s <url> | openssl dgst -sha384 -binary | base64`. The Content Security Policy
+in `index.html` must stay consistent with any new CDN domains added; update both the CSP
+meta tag and the `firebase.json` hosting headers.
 
 **Component subscription cleanup — always unsubscribe on DOM removal.** Any component that calls `onThemeChange()`, or subscribes to any other module-level store or service, must capture the returned unsubscribe function and call it when the component is torn down. The pattern: attach the unsubscribe to the element as `el._cleanup = unsubscribe`, have the component factory return `{ node, cleanup }` (or expose `_cleanup` for callers to collect), and wire the cleanup into the route's cleanup return in `main.js`. Failing to do this leaks dead DOM references and fires callbacks on removed nodes — see Issue #27. Never add a subscription without a paired teardown path.
 
