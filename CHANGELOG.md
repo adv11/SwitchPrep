@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Security
-- **CSP + SRI + security headers** (issue #25): Content Security Policy meta tag added to `index.html` blocking inline scripts and restricting fetch/connect origins. Three Firebase SDK CDN modules pinned with `<link rel="modulepreload" integrity="sha384-...">` SRI hashes. `firebase.json` extended with Firebase Hosting security headers (HSTS, X-Frame-Options: DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy). Theme bootstrap extracted from inline IIFE to `src/services/themeBootstrap.js` (classic script, no-FOUC guarantee preserved). ADR-002 documents the CSP/SRI design and SDK upgrade process.
+- **CSP + SRI + security headers** (issue #25): Content Security Policy meta tag added to `index.html` blocking inline scripts and restricting fetch/connect origins. Three Firebase SDK CDN modules pinned with `<link rel="modulepreload" integrity="sha384-...">` SRI hashes. `firebase.json` extended with Firebase Hosting security headers (HSTS, X-Frame-Options: DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy). Theme bootstrap extracted from inline IIFE to `src/services/themeBootstrap.js` (classic script, no-FOUC guarantee preserved). ADR-002 documents the CSP/SRI design and SDK upgrade process. `connect-src` also allows the local `127.0.0.1:9099`/`127.0.0.1:9000` Auth/Database emulator origins so `FIREBASE_CONFIGURED=true` E2E runs (issue #37) aren't blocked by the new policy.
 
 ### Infra
 - CI: verify Firebase Emulator E2E runs with secrets configured (issue #37)

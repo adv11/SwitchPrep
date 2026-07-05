@@ -68,9 +68,16 @@ CSP directives chosen:
 | `script-src` | `'self' https://www.gstatic.com` | Firebase SDK CDN modules |
 | `style-src` | `'self' https://fonts.googleapis.com` | Google Fonts CSS |
 | `font-src` | `https://fonts.gstatic.com` | Google Fonts font files |
-| `connect-src` | `https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com` | Firebase Realtime Database (HTTPS + WebSocket), Auth REST, token refresh |
+| `connect-src` | `https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com http://127.0.0.1:9099 http://127.0.0.1:9000 ws://127.0.0.1:9000` | Firebase Realtime Database (HTTPS + WebSocket), Auth REST, token refresh, plus the local Auth/Database emulator ports used by `FIREBASE_CONFIGURED=true` E2E runs (`connectAuthEmulator`/`connectDatabaseEmulator` in `firebase.js`) |
 | `img-src` | `'self' data:` | Allows inline SVG data URIs (used by favicon/icons) |
 | `frame-ancestors` | `'none'` | Belt-and-suspenders with X-Frame-Options: DENY |
+
+The `127.0.0.1` emulator entries only matter when `window.__USE_FIREBASE_EMULATOR__` is
+set (CI E2E and local emulator testing per issue #37) — production and normal local dev
+never call those code paths, but the CSP is a static meta tag with no per-environment
+templating, so the origins have to be allowed unconditionally. Without them, the browser
+silently blocks `connectAuthEmulator`/`connectDatabaseEmulator`'s requests, guest sign-in
+never completes, and every E2E test gated behind it times out waiting for `.dashboard`.
 
 ### Phase C — Subresource Integrity for Firebase SDK (`index.html` modulepreload)
 
