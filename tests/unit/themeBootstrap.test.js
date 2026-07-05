@@ -1,0 +1,64 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+// Load the bootstrap source once — we eval it per-test via Function() so each
+// test gets a fresh execution against the jsdom globals set up in tests/setup.js.
+// Using Function() here is intentional: the bootstrap is a plain IIFE (not an ES
+// module) and must be exercised as it runs in the browser — synchronously in
+// the global scope — not via an import statement.
+const bootstrapSrc = readFileSync(
+  join(process.cwd(), 'src/services/themeBootstrap.js'),
+  'utf8'
+);
+
+function runBootstrap() {
+  // eslint-disable-next-line no-new-func
+  new Function(bootstrapSrc)();
+}
+
+beforeEach(() => {
+  delete document.documentElement.dataset.theme;
+  localStorage.clear();
+  // Reset matchMedia mock to default (light preference) from setup.js
+  window.matchMedia.mockImplementation(query => ({
+    matches: false,
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+});
+
+describe('themeBootstrap — localStorage precedence', () => {
+  it('applies stored "dark" theme', () => {
+    localStorage.setItem('switchprep-theme', 'dark');
+    runBootstrap();
+    expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+
+  it('applies stored "light" theme', () => {
+    localStorage.setItem('switchprep-theme', 'light');
+    runBootstrap();
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('stored value takes priority over system dark preference', () => {
+    localStorage.setItem('switchprep-theme', 'light');
+    window.matchMedia.mockImplementation(q => ({ matches: true, media: q, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    runBootstrap();
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+});
+
+describe('themeBootstrap — system preference fallback', () => {
+  it('uses "dark" when no stored value and system prefers dark', () => {
+    window.matchMedia.mockImplementation(q => ({ matches: true, media: q, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    runBootstrap();
+    expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+
+  it('uses "light" when no stored value and system prefers light', () => {
+    runBootstrap();
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+});

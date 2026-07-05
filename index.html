@@ -4,14 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="SwitchPrep is a switch preparation tracker for Java Spring Boot backend engineers with GenAI and Agentic AI skills.">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self';
+             script-src 'self' https://www.gstatic.com;
+             style-src 'self' https://fonts.googleapis.com;
+             font-src https://fonts.gstatic.com;
+             connect-src https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com http://127.0.0.1:9099 http://127.0.0.1:9000 ws://127.0.0.1:9000;
+             img-src 'self' data:;
+             frame-ancestors 'none'">
   <title>SwitchPrep</title>
-  <script>
-    (function () {
-      var stored = localStorage.getItem('switchprep-theme');
-      var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      document.documentElement.dataset.theme = theme;
-    })();
-  </script>
+  <!-- Theme must be applied synchronously before CSS loads to prevent flash of wrong theme.
+       Extracted to an external file so the CSP can use 'self' without 'unsafe-inline'. -->
+  <script src="./src/services/themeBootstrap.js"></script>
+  <!-- SRI hashes lock these CDN modules to the exact bytes we audited.
+       Update both the import URL in firebase.js and these hashes whenever upgrading Firebase SDK. -->
+  <link rel="modulepreload" crossorigin="anonymous"
+    href="https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js"
+    integrity="sha384-znyovRzngjkxL8fWwERhttfl3ktWuL26X6KiQCV0M+l1dCcS8xQTASvz/uSKyxdL">
+  <link rel="modulepreload" crossorigin="anonymous"
+    href="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js"
+    integrity="sha384-K1EbNeOM8wMXfcJAC/swEwz6VFy4wAK+KoBXYltJg9sy6jFj0yCTWfVEgFI4tVNp">
+  <link rel="modulepreload" crossorigin="anonymous"
+    href="https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js"
+    integrity="sha384-QTGc3vdsjQWaJFRX+uOJCkVRby8Q010Dat5Ve3tIKMHISniPOS3XaDLHVRlxmLE+">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
