@@ -1,10 +1,11 @@
-# SwitchPrep — Planned Features
+# Ascent — Planned Features
 
 Features are tracked as GitHub issues. This document summarises planned work by phase.
 See the master tracker (issue #11) for current status of every item.
 
 ## In progress / next up
 
+- **#7** — Product rename / brand system (Ascent) — name confirmed, rollout in progress
 - **#37** — Firebase Emulator wired into E2E CI (branch protection gate)
 - **#3** — Enterprise architecture, coverage, and AI-agent coding standards
 
@@ -16,7 +17,6 @@ See the master tracker (issue #11) for current status of every item.
 
 ## Future
 
-- **#7** — Product rename / brand system (Ascent) — confirm name before starting
 - **#36** — Cross-device / responsive consistency — `priority:critical` for v1.0;
   real breakpoints, touch targets, iOS input zoom fix, safe-area insets
 - **#4** — Multi-roadmap support (custom roadmaps + AI import)

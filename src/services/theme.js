@@ -1,4 +1,6 @@
-const THEME_KEY = 'switchprep-theme';
+import { KEYS } from './localStorageKeys.js';
+
+const THEME_KEY = KEYS.THEME;
 const media = window.matchMedia('(prefers-color-scheme: dark)');
 const subscribers = new Set();
 

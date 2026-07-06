@@ -1,9 +1,9 @@
-# SwitchPrep — Agent Instructions
+# Ascent — Agent Instructions
 
-SwitchPrep is a prep tracker for backend engineers (Java, Spring Boot, microservices,
-GenAI/agentic AI, system design) working toward a company switch. It's moving from a
-personal tool toward a sellable product, so treat correctness and polish here as
-customer-facing, not a side project.
+Ascent ("Engineer your next move.") is a prep tracker for backend engineers (Java,
+Spring Boot, microservices, GenAI/agentic AI, system design) working toward a company
+switch. It's moving from a personal tool toward a sellable product, so treat
+correctness and polish here as customer-facing, not a side project.
 
 > **Keep this file in sync with `CLAUDE.md`.** Whenever `CLAUDE.md` is updated, apply
 > the same change here. They must never diverge.
@@ -91,11 +91,13 @@ Claude Code supports working on multiple issues simultaneously using **git workt
 
 ```
 index.html                    entry HTML; CSP meta tag, SRI modulepreload for Firebase SDK, external themeBootstrap
-src/main.js                   boot: init theme, auth gate, hash router wiring
+src/main.js                   boot: migrate localStorage keys, init theme, auth gate, hash router wiring
 src/data/roadmap.js           seed phases/sections/items + resource library
 src/services/firebase.js      auth + Realtime Database access
 src/services/firebase.config.js          gitignored — your real Firebase project config
 src/services/firebase.config.example.js  committed template for the file above
+src/services/localStorageKeys.js  canonical `ascent-*` localStorage/sessionStorage key strings
+src/services/migration.js     one-time migration off the pre-rename `switchprep-*` key prefix
 src/services/roadmapStore.js  in-memory roadmap store: subscribe/notify, local + remote save
 src/services/theme.js         dark/light theme state (localStorage + system preference)
 src/services/themeBootstrap.js  synchronous classic script — sets data-theme before CSS loads (no-FOUC)
@@ -105,12 +107,15 @@ src/ui/pages/signIn.js        sign-in screen
 src/ui/pages/signUp.js        sign-up screen
 src/ui/pages/dashboard.js     the roadmap dashboard (the whole app, really)
 src/ui/components/authShell.js   shared chrome for signIn/signUp (brand row + theme toggle + card)
+src/ui/components/brand.js       canonical brand mark/wordmark — createBrandMark()/createBrandIcon()
 src/ui/components/themeToggle.js reusable dark/light toggle button
 src/ui/components/itemPanel.js   slide-in panel for editing a topic + its resources
 src/ui/components/toast.js       transient toast notifications
 src/styles/app.css            the entire design system (tokens, components, both themes)
 docs/architecture.md          living architecture guide + Build Log (canonical deep-dive doc)
 firebase/database.rules.json  Realtime Database security rules
+public/                       favicon.svg, generated PWA icons/OG image, manifest.json
+scripts/generate-brand-assets.mjs  dev-only Playwright script that rasterizes favicon.svg into public/*.png
 tests/unit/                   Vitest unit tests
 tests/integration/            Vitest integration tests
 tests/e2e/                    Playwright E2E tests
@@ -190,12 +195,25 @@ a classic `<script src="...">` (no `defer`/`async`/`type="module"`) that reads
 `localStorage` and sets `data-theme` on `<html>` synchronously before CSS loads. It was
 extracted from an inline IIFE so the Content Security Policy (Issue #25) can omit
 `'unsafe-inline'`. Do not convert it to a module or add `defer`/`async` — that breaks
-the synchronous timing guarantee and causes a flash of the wrong theme. `src/services/theme.js`
-owns `getTheme()` / `setTheme()` / `toggleTheme()` / `onThemeChange()`, persisted under the
-`switchprep-theme` localStorage key; until the user makes an explicit choice, it follows
-`prefers-color-scheme` live. All colors in `app.css` are CSS custom properties defined
+the synchronous timing guarantee and causes a flash of the wrong theme. Because it runs
+before `migrateLocalStorageKeys()` ever gets a chance to, it reads `ascent-theme` first
+and falls back to the pre-rename `switchprep-theme` key so existing users don't get a
+flash of the wrong theme on their first post-rename load. `src/services/theme.js`
+owns `getTheme()` / `setTheme()` / `toggleTheme()` / `onThemeChange()`, persisted under
+`KEYS.THEME` (`localStorageKeys.js`, currently `ascent-theme`); until the user makes an
+explicit choice, it follows `prefers-color-scheme` live. All colors in `app.css` are CSS custom properties defined
 once under `:root` (light) and re-defined under `:root[data-theme='dark']` — never hardcode
 a color in a component rule; add or reuse a token instead so both themes stay correct.
+
+**Brand rules.** Never hard-code the product name as a string in any `.js` file —
+import `createBrandMark()` / `createBrandWordmark()` / `createBrandIcon()` from
+`src/ui/components/brand.js` instead. The only permitted occurrences of the literal
+string `'Ascent'` in source are inside `brand.js` itself and inside `index.html`'s meta
+tags/title. All `localStorage`/`sessionStorage` keys must come from
+`src/services/localStorageKeys.js`'s `KEYS` object (or `verifyDismissedKey()`) — never
+write a raw `ascent-*` string in any other file. This is what makes a future rename (or
+a white-labeled variant) a one-file change instead of a repo-wide grep; see Issue #7
+and `docs/adr/ADR-004-product-rename.md`.
 
 **SRI + CSP — mandatory when loading CDN scripts.** `index.html` locks the three Firebase
 SDK modules with `<link rel="modulepreload" integrity="sha384-...">` Subresource Integrity

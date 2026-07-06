@@ -1,8 +1,9 @@
 import { ROADMAP_VERSION, buildSeedItems } from '../data/roadmap.js';
 import { dbApi, firebaseClock } from './firebase.js';
+import { KEYS } from './localStorageKeys.js';
 
-const LOCAL_KEY = 'switchprep-roadmap-v3';
-const UI_KEY = 'switchprep-ui-v3';
+const LOCAL_KEY = KEYS.ROADMAP;
+const UI_KEY = KEYS.UI_STATE;
 
 // Firebase's onValue listener fires on every write to the path, including the
 // echo of writes this same client just made. Comparing with JSON.stringify

@@ -1,11 +1,13 @@
 import { authApi } from './services/firebase.js';
 import { createRoadmapStore } from './services/roadmapStore.js';
 import { initTheme } from './services/theme.js';
+import { migrateLocalStorageKeys } from './services/migration.js';
 import { startRouter, registerRoute, navigate, getRoute } from './ui/router.js';
 import { renderSignIn } from './ui/pages/signIn.js';
 import { renderSignUp } from './ui/pages/signUp.js';
 import { renderDashboard } from './ui/pages/dashboard.js';
 
+migrateLocalStorageKeys();
 initTheme();
 
 const app = document.getElementById('app');

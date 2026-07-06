@@ -1,6 +1,6 @@
-# SwitchPrep — Architecture & Living Guide
+# Ascent — Architecture & Living Guide
 
-> **Start here.** This is the single canonical reference for what SwitchPrep is, how it
+> **Start here.** This is the single canonical reference for what Ascent is, how it
 > is built, why each choice was made, and how it has evolved. Every significant
 > architectural change appended to the [Build Log](#build-log) below — one entry per
 > PR, written at merge time.
@@ -9,7 +9,7 @@
 
 ## 1. Project origin & goals
 
-SwitchPrep is a prep tracker for backend engineers (Java, Spring Boot, microservices,
+Ascent is a prep tracker for backend engineers (Java, Spring Boot, microservices,
 GenAI/agentic AI, system design) working toward a company switch. It started as a
 personal tool and is moving toward a sellable product. Correctness and polish are
 treated as customer-facing, not side-project-level.
@@ -38,8 +38,9 @@ Working toward Phase 1 (hosting, auth improvements, core architecture hardening)
 index.html
 ```
 Entry HTML. Contains an **inline no-FOUC theme bootstrap script** that reads
-`switchprep-theme` from `localStorage` and sets `data-theme` on `<html>` before any
-CSS loads — this prevents the flash of the wrong theme on a hard reload.
+`ascent-theme` (falling back to the pre-rename `switchprep-theme` key) from
+`localStorage` and sets `data-theme` on `<html>` before any CSS loads — this prevents
+the flash of the wrong theme on a hard reload.
 
 ```
 src/main.js
@@ -89,7 +90,8 @@ The central state container. Key design decisions:
 src/services/theme.js
 ```
 Owns `getTheme()` / `setTheme()` / `toggleTheme()` / `onThemeChange()`, persisted under
-`switchprep-theme` in `localStorage`. Follows `prefers-color-scheme` until the user makes
+`ascent-theme` in `localStorage` (key comes from `localStorageKeys.js`). Follows
+`prefers-color-scheme` until the user makes
 an explicit choice. Returns an unsubscribe function from `onThemeChange()` — callers must
 capture and call it on teardown (see §5.4).
 
@@ -448,7 +450,7 @@ workflow prints instructions and exits cleanly rather than failing. Required set
 
 **New module**: `src/ui/components/verificationBanner.js` — dismissible info bar shown on
 the dashboard when the signed-in user's email is not yet verified. Dismiss state is stored
-in `sessionStorage` keyed by `switchprep-verify-dismissed-{uid}` so it persists across
+in `sessionStorage` keyed by `ascent-verify-dismissed-{uid}` so it persists across
 navigations but clears on browser close.
 
 **`src/services/firebase.js`** extended with three new `authApi` methods:
@@ -489,3 +491,39 @@ password" / "Confirm password".
 **`src/styles/app.css`**: new classes `.field-input-wrap`, `.password-toggle`,
 `.strength-meter`, `.strength-segment`, `.strength-segment.weak/.fair/.strong`,
 `.field-error`.
+
+### 2026-07-06 — PR #TBD — Product rename to Ascent, brand system, localStorage key migration (issue #7)
+
+**New module**: `src/ui/components/brand.js` — single source of truth for the wordmark.
+Exports `createBrandIcon()` / `createBrandWordmark()` / `createBrandMark({ tagline })`.
+Replaces the `✓`-glyph markup that was previously duplicated inline in both
+`authShell.js` and `dashboard.js` with a shared inline SVG triangle (filled with
+`currentColor` so `.brand-mark`'s CSS still controls the color). `el()` only creates
+HTML elements (`document.createElement`), so `brand.js` adds its own tiny local
+`svgEl()` helper (`document.createElementNS`) rather than changing the shared `dom.js`
+contract, since nothing else in the app needs SVG creation.
+
+**New modules**: `src/services/localStorageKeys.js` (canonical `KEYS` object +
+`verifyDismissedKey(uid)`) and `src/services/migration.js`
+(`migrateLocalStorageKeys()`), called at the top of `main.js` before `initTheme()`.
+Renaming `switchprep-theme` / `switchprep-roadmap-v3` / `switchprep-ui-v3` without a
+migration would have silently reset every existing user's theme and roadmap progress
+on their next visit. `src/services/themeBootstrap.js` (a classic script that runs
+before `main.js`'s migration ever gets a chance to) reads `ascent-theme` first and
+falls back to `switchprep-theme`, so first paint is still correct pre-migration.
+
+**New assets**: `public/favicon.svg` (hand-written, matches `.brand-mark`'s existing
+40×40 / `rx: 12` / teal→cyan gradient exactly), plus `public/favicon-32.png`,
+`public/apple-touch-icon.png`, `public/icon-192.png`, `public/icon-512.png`,
+`public/og-image.png`, and `public/manifest.json`. The PNGs and OG image are generated
+by `scripts/generate-brand-assets.mjs` (dev-only, run via
+`npm run generate:brand-assets`), which uses the already-installed
+`@playwright/test` Chromium to screenshot `favicon.svg` at each required size —
+pixel-consistent with the in-app icon rather than redrawn by hand. `index.html` gains
+`<link rel="icon"/manifest/apple-touch-icon>`, `theme-color`, and `og:*` meta tags;
+none existed before this PR.
+
+**Deferred** (see `docs/adr/ADR-004-product-rename.md`): the GitHub repository rename
+is Issue #10; Firebase Console changes (project display name, Auth email templates,
+custom action-URL domain) are manual, non-code steps documented as a checklist on the
+closing PR.

@@ -8,7 +8,7 @@ const FIREBASE_CONFIGURED = !!process.env.FIREBASE_CONFIGURED;
 test('page loads and shows sign-in screen', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.brand-name')).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator('.brand-name')).toContainText('SwitchPrep');
+  await expect(page.locator('.brand-name')).toContainText('Ascent');
 });
 
 test('theme toggle is visible on sign-in screen', async ({ page }) => {
@@ -21,7 +21,7 @@ test('guest session starts and dashboard loads', async ({ page }) => {
   await page.goto('/');
   await page.click('text=Continue as guest');
   await expect(page.locator('.dashboard')).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator('.brand-name')).toContainText('SwitchPrep');
+  await expect(page.locator('.brand-name')).toContainText('Ascent');
 });
 
 test('"Forgot password?" link is visible on sign-in screen', async ({ page }) => {
