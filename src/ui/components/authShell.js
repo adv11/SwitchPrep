@@ -1,5 +1,6 @@
 import { el } from '../dom.js';
 import { createThemeToggle } from './themeToggle.js';
+import { createBrandMark } from './brand.js';
 
 export function authShell({ title, subtitle, children, footer, footnote }) {
   const toggleBtn = createThemeToggle();
@@ -9,10 +10,7 @@ export function authShell({ title, subtitle, children, footer, footnote }) {
     el('div', { className: 'auth-page-bg' }),
     el('div', { className: 'auth-page-inner' }, [
       el('div', { className: 'auth-top-row' }, [
-        el('a', { className: 'brand auth-brand', href: '#/signin' }, [
-          el('span', { className: 'brand-mark', text: '✓' }),
-          el('span', { className: 'brand-name', text: 'SwitchPrep' })
-        ]),
+        el('a', { className: 'brand auth-brand', href: '#/signin' }, createBrandMark()),
         toggleBtn
       ]),
       el('div', { className: 'auth-card-lg' }, [

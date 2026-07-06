@@ -111,13 +111,13 @@ describe('sign-out guard (setUser contract)', () => {
     store.setUser({ uid: 'user-123' });
 
     // Manually write data that belongs to the outgoing user
-    localStorage.setItem('switchprep-roadmap-v3', JSON.stringify({ dirty: false, items: {} }));
-    localStorage.setItem('switchprep-ui-v3', JSON.stringify({ expanded: true }));
+    localStorage.setItem('ascent-roadmap-v3', JSON.stringify({ dirty: false, items: {} }));
+    localStorage.setItem('ascent-ui-v3', JSON.stringify({ expanded: true }));
 
     store.setUser(null);
 
-    expect(localStorage.getItem('switchprep-roadmap-v3')).toBeNull();
-    expect(localStorage.getItem('switchprep-ui-v3')).toBeNull();
+    expect(localStorage.getItem('ascent-roadmap-v3')).toBeNull();
+    expect(localStorage.getItem('ascent-ui-v3')).toBeNull();
   });
 
   it('setUser(null) resets items to seed data', () => {
@@ -135,11 +135,11 @@ describe('sign-out guard (setUser contract)', () => {
   it('setUser(null) on initial boot (uid was null) does NOT clear localStorage', () => {
     const store = createRoadmapStore();
     // uid starts as null — guard must NOT fire here
-    localStorage.setItem('switchprep-roadmap-v3', 'should-remain');
+    localStorage.setItem('ascent-roadmap-v3', 'should-remain');
 
     store.setUser(null); // uid is still null, no transition
 
-    expect(localStorage.getItem('switchprep-roadmap-v3')).toBe('should-remain');
+    expect(localStorage.getItem('ascent-roadmap-v3')).toBe('should-remain');
   });
 });
 

@@ -86,12 +86,12 @@ jobs:
           fi
       - name: Start Firebase emulators
         if: env.FIREBASE_CONFIGURED == 'true'
-        # Use demo-switchprep so Firebase CLI starts without any authentication.
+        # Use demo-ascent so Firebase CLI starts without any authentication.
         # demo-* project IDs are a Firebase CLI convention that skips all network
         # calls to Google — the emulator runs fully offline. Any real project ID
         # in FIREBASE_CONFIG_TEST still works because connectAuthEmulator /
         # connectDatabaseEmulator redirect all SDK requests to the local ports.
-        run: npx firebase emulators:start --only auth,database --project demo-switchprep &
+        run: npx firebase emulators:start --only auth,database --project demo-ascent &
       - name: Wait for Firebase Auth emulator to be ready
         if: env.FIREBASE_CONFIGURED == 'true'
         run: |

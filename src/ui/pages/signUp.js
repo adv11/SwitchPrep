@@ -131,13 +131,13 @@ export function renderSignUp(app, { user }) {
 
   const { node, cleanup } = authShell({
     title: 'Create your account',
-    subtitle: 'Track Java, Spring Boot, distributed systems, GenAI, and interview prep in one place.',
+    subtitle: 'Track your roadmap, resources, and progress in one place.',
     children: [form],
     footer: el('p', {}, [
       'Already have an account? ',
       el('a', { href: '#/signin', className: 'link', text: 'Sign in' })
     ]),
-    footnote: 'Java · Spring Boot · Microservices · GenAI · System Design'
+    footnote: 'Roadmaps · Resources · Progress tracking · Multi-device sync'
   });
   app.replaceChildren(node);
   return cleanup;

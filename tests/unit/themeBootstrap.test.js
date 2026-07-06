@@ -31,20 +31,35 @@ beforeEach(() => {
 
 describe('themeBootstrap — localStorage precedence', () => {
   it('applies stored "dark" theme', () => {
-    localStorage.setItem('switchprep-theme', 'dark');
+    localStorage.setItem('ascent-theme', 'dark');
     runBootstrap();
     expect(document.documentElement.dataset.theme).toBe('dark');
   });
 
   it('applies stored "light" theme', () => {
-    localStorage.setItem('switchprep-theme', 'light');
+    localStorage.setItem('ascent-theme', 'light');
     runBootstrap();
     expect(document.documentElement.dataset.theme).toBe('light');
   });
 
   it('stored value takes priority over system dark preference', () => {
-    localStorage.setItem('switchprep-theme', 'light');
+    localStorage.setItem('ascent-theme', 'light');
     window.matchMedia.mockImplementation(q => ({ matches: true, media: q, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    runBootstrap();
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+});
+
+describe('themeBootstrap — pre-rename key fallback', () => {
+  it('falls back to the pre-rename switchprep-theme key when ascent-theme is absent', () => {
+    localStorage.setItem('switchprep-theme', 'dark');
+    runBootstrap();
+    expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+
+  it('prefers ascent-theme over switchprep-theme when both are present', () => {
+    localStorage.setItem('switchprep-theme', 'dark');
+    localStorage.setItem('ascent-theme', 'light');
     runBootstrap();
     expect(document.documentElement.dataset.theme).toBe('light');
   });

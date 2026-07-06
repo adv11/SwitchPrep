@@ -35,7 +35,7 @@ describe('createVerificationBanner', () => {
   });
 
   it('returns null when user already dismissed in this session', async () => {
-    sessionStorage.setItem(`switchprep-verify-dismissed-${emailUser.uid}`, '1');
+    sessionStorage.setItem(`ascent-verify-dismissed-${emailUser.uid}`, '1');
     const { createVerificationBanner } = await import('../../src/ui/components/verificationBanner.js');
     expect(createVerificationBanner(emailUser)).toBeNull();
   });
@@ -56,7 +56,7 @@ describe('createVerificationBanner', () => {
     dismissBtn.click();
 
     expect(document.body.contains(banner)).toBe(false);
-    expect(sessionStorage.getItem(`switchprep-verify-dismissed-${emailUser.uid}`)).toBe('1');
+    expect(sessionStorage.getItem(`ascent-verify-dismissed-${emailUser.uid}`)).toBe('1');
   });
 
   it('resend button calls sendVerificationEmail and shows toast', async () => {

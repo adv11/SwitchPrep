@@ -1,13 +1,14 @@
 import { el } from '../dom.js';
 import { authApi } from '../../services/firebase.js';
 import { showToast } from './toast.js';
+import { verifyDismissedKey } from '../../services/localStorageKeys.js';
 
 // Shows when the signed-in user's email is not yet verified.
 // Uses sessionStorage to remember dismissal per user per session.
 export function createVerificationBanner(user) {
   if (user.isAnonymous || user.emailVerified) return null;
 
-  const DISMISS_KEY = `switchprep-verify-dismissed-${user.uid}`;
+  const DISMISS_KEY = verifyDismissedKey(user.uid);
   if (sessionStorage.getItem(DISMISS_KEY)) return null;
 
   const resendBtn = el('button', {

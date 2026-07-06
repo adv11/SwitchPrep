@@ -6,6 +6,7 @@ import { openItemPanel } from '../components/itemPanel.js';
 import { showToast } from '../components/toast.js';
 import { createThemeToggle } from '../components/themeToggle.js';
 import { createVerificationBanner } from '../components/verificationBanner.js';
+import { createBrandMark } from '../components/brand.js';
 
 function groupItems(items) {
   const phases = [];
@@ -432,13 +433,7 @@ export function renderDashboard(app, { user, store }) {
     offlineBanner,
     el('header', { className: 'dashboard-header' }, [
       el('div', { className: 'header-top' }, [
-        el('div', { className: 'brand' }, [
-          el('span', { className: 'brand-mark', text: '✓' }),
-          el('div', {}, [
-            el('div', { className: 'brand-name', text: 'SwitchPrep' }),
-            el('div', { className: 'brand-tagline', text: 'Java Spring Boot switch command center' })
-          ])
-        ]),
+        el('div', { className: 'brand' }, createBrandMark({ tagline: 'Your personal progress command center' })),
         el('div', { className: 'header-actions' }, [
           themeToggleBtn,
           syncPill,
@@ -466,8 +461,8 @@ export function renderDashboard(app, { user, store }) {
       ]),
       el('div', { className: 'hero-panel' }, [
         el('div', { className: 'hero-copy' }, [
-          el('h1', { className: 'hero-title', text: 'Track the prep that gets you interview-ready.' }),
-          el('p', { className: 'hero-text', text: 'Java, Spring Boot, microservices, Kafka, Redis, system design, DSA, GenAI, and agentic AI — all in one editable checklist.' })
+          el('h1', { className: 'hero-title', text: 'Learn it. Revise it. Track it.' }),
+          el('p', { className: 'hero-text', text: 'Every topic, resource, and priority — all in one editable checklist that syncs across your devices.' })
         ]),
         el('div', { className: 'progress-card' }, [
           el('div', { className: 'progress-stat' }, [
