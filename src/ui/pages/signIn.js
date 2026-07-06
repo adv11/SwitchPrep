@@ -15,18 +15,18 @@ export function renderSignIn(app, { user }) {
 
   const { node, cleanup, titleEl, subtitleEl } = authShell({
     title: 'Welcome back',
-    subtitle: 'Sign in to sync your switch-prep roadmap across devices.',
+    subtitle: 'Sign in to sync your roadmap across devices.',
     children: [bodySlot],
     footer: el('p', {}, [
       'New here? ',
       el('a', { href: '#/signup', className: 'link', text: 'Create an account' })
     ]),
-    footnote: 'Built for Java Spring Boot engineers preparing for product-company switches.'
+    footnote: 'Built for engineers preparing for their next career move.'
   });
 
   function showSignInView(prefillEmail = '') {
     titleEl.textContent = 'Welcome back';
-    subtitleEl.textContent = 'Sign in to sync your switch-prep roadmap across devices.';
+    subtitleEl.textContent = 'Sign in to sync your roadmap across devices.';
 
     const message = el('p', { className: 'form-message', text: '' });
     const emailInput = el('input', {

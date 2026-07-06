@@ -433,7 +433,7 @@ export function renderDashboard(app, { user, store }) {
     offlineBanner,
     el('header', { className: 'dashboard-header' }, [
       el('div', { className: 'header-top' }, [
-        el('div', { className: 'brand' }, createBrandMark({ tagline: 'Java Spring Boot switch command center' })),
+        el('div', { className: 'brand' }, createBrandMark({ tagline: 'Your engineering prep command center' })),
         el('div', { className: 'header-actions' }, [
           themeToggleBtn,
           syncPill,
@@ -462,7 +462,7 @@ export function renderDashboard(app, { user, store }) {
       el('div', { className: 'hero-panel' }, [
         el('div', { className: 'hero-copy' }, [
           el('h1', { className: 'hero-title', text: 'Track the prep that gets you interview-ready.' }),
-          el('p', { className: 'hero-text', text: 'Java, Spring Boot, microservices, Kafka, Redis, system design, DSA, GenAI, and agentic AI — all in one editable checklist.' })
+          el('p', { className: 'hero-text', text: 'Every topic, resource, and priority — all in one editable checklist that syncs across your devices.' })
         ]),
         el('div', { className: 'progress-card' }, [
           el('div', { className: 'progress-stat' }, [
