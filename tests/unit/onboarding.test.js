@@ -5,6 +5,7 @@ vi.mock('../../src/ui/router.js', () => ({ navigate: vi.fn() }));
 async function setup({
   onboardingDone = false,
   hiddenTemplateIds = [],
+  templateId,
   initFromTemplate = vi.fn().mockResolvedValue(undefined),
   hideTemplate = vi.fn().mockResolvedValue(undefined),
   unhideTemplate = vi.fn().mockResolvedValue(undefined)
@@ -14,7 +15,7 @@ async function setup({
   const app = document.createElement('div');
   document.body.appendChild(app);
   const store = {
-    getSnapshot: vi.fn(() => ({ onboardingDone, hiddenTemplateIds })),
+    getSnapshot: vi.fn(() => ({ onboardingDone, hiddenTemplateIds, templateId })),
     initFromTemplate,
     hideTemplate,
     unhideTemplate
@@ -22,6 +23,17 @@ async function setup({
   const user = { uid: 'uid-1', isAnonymous: false };
   const cleanup = renderOnboarding(app, { user, store });
   return { app, navigate, store, cleanup };
+}
+
+// The confirmDialog() modal renders into document.body (a sibling of `app`,
+// same as the native confirm() it replaced), so tests reach it via document,
+// not app.
+function getConfirmDialog() {
+  return document.querySelector('.modal-overlay');
+}
+
+function clickDialogAction(action) {
+  document.querySelector(`.modal-overlay [data-action="${action}"]`)?.click();
 }
 
 beforeEach(() => {
@@ -57,13 +69,12 @@ describe('onboarding page — first-time picker (onboardingDone === false)', () 
 
   it('clicking a card picks that template without confirmation and navigates to /app', async () => {
     const initFromTemplate = vi.fn().mockResolvedValue(undefined);
-    const confirmSpy = vi.spyOn(window, 'confirm');
     const { app, navigate } = await setup({ initFromTemplate });
     const blankCard = [...app.querySelectorAll('.template-card')].find(b => b.textContent.includes('Start blank'));
     blankCard.click();
     await vi.waitFor(() => expect(initFromTemplate).toHaveBeenCalledWith('blank'));
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/app', true));
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(getConfirmDialog()).toBeNull();
   });
 
   it('disables every card while a pick is in flight, to prevent a double-submit', async () => {
@@ -91,13 +102,15 @@ describe('onboarding page — first-time picker (onboardingDone === false)', () 
   });
 
   it('clicking the hide button asks for confirmation, then hides the card without picking it', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const hideTemplate = vi.fn().mockResolvedValue(undefined);
     const initFromTemplate = vi.fn().mockResolvedValue(undefined);
     const { app, navigate } = await setup({ hideTemplate, initFromTemplate });
 
     const javaCard = [...app.querySelectorAll('.template-card')].find(c => c.textContent.includes('Java Backend Engineer'));
     javaCard.querySelector('.template-card-hide').click();
+
+    expect(getConfirmDialog()).toBeTruthy();
+    clickDialogAction('confirm');
 
     await vi.waitFor(() => expect(hideTemplate).toHaveBeenCalledWith('java-backend'));
     expect(initFromTemplate).not.toHaveBeenCalled();
@@ -107,12 +120,14 @@ describe('onboarding page — first-time picker (onboardingDone === false)', () 
   });
 
   it('does not hide when the confirmation is dismissed', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
     const hideTemplate = vi.fn().mockResolvedValue(undefined);
     const { app } = await setup({ hideTemplate });
 
     const javaCard = [...app.querySelectorAll('.template-card')].find(c => c.textContent.includes('Java Backend Engineer'));
     javaCard.querySelector('.template-card-hide').click();
+
+    clickDialogAction('cancel');
+    await vi.waitFor(() => expect(getConfirmDialog()).toBeNull());
 
     expect(hideTemplate).not.toHaveBeenCalled();
     expect([...app.querySelectorAll('.template-card-name')].some(n => n.textContent === 'Java Backend Engineer')).toBe(true);
@@ -155,25 +170,44 @@ describe('onboarding page — switch-template mode (onboardingDone === true)', (
 
   it('requires confirmation before replacing the current roadmap, and does nothing if cancelled', async () => {
     const initFromTemplate = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    const { app, navigate } = await setup({ onboardingDone: true, initFromTemplate });
+    const { app, navigate } = await setup({ onboardingDone: true, templateId: 'java-backend', initFromTemplate });
 
-    app.querySelector('.template-card').click();
+    const dataScienceCard = [...app.querySelectorAll('.template-card')].find(c => c.textContent.includes('Data Scientist'));
+    dataScienceCard.click();
 
-    expect(window.confirm).toHaveBeenCalled();
+    expect(getConfirmDialog()).toBeTruthy();
+    clickDialogAction('cancel');
+
+    await vi.waitFor(() => expect(getConfirmDialog()).toBeNull());
     expect(initFromTemplate).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalledWith('/app', true);
   });
 
   it('switches to the picked template once the user confirms', async () => {
     const initFromTemplate = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const { app, navigate } = await setup({ onboardingDone: true, initFromTemplate });
+    const { app, navigate } = await setup({ onboardingDone: true, templateId: 'java-backend', initFromTemplate });
 
     const blankCard = [...app.querySelectorAll('.template-card')].find(b => b.textContent.includes('Start blank'));
     blankCard.click();
 
+    expect(getConfirmDialog()).toBeTruthy();
+    clickDialogAction('confirm');
+
     await vi.waitFor(() => expect(initFromTemplate).toHaveBeenCalledWith('blank'));
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/app', true));
+  });
+
+  it('marks the active template as "Current" and re-picking it returns to the dashboard without re-seeding or asking for confirmation', async () => {
+    const initFromTemplate = vi.fn().mockResolvedValue(undefined);
+    const { app, navigate } = await setup({ onboardingDone: true, templateId: 'java-backend', initFromTemplate });
+
+    const javaCard = [...app.querySelectorAll('.template-card')].find(c => c.textContent.includes('Java Backend Engineer'));
+    expect(javaCard.querySelector('.template-card-current-badge')?.textContent).toBe('Current');
+
+    javaCard.click();
+
+    expect(getConfirmDialog()).toBeNull();
+    expect(initFromTemplate).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/app', true));
   });
 });

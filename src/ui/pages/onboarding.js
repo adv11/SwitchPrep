@@ -3,12 +3,14 @@ import { navigate } from '../router.js';
 import { createThemeToggle } from '../components/themeToggle.js';
 import { createBrandMark } from '../components/brand.js';
 import { openBuildYourOwnGuide } from '../components/buildYourOwnGuide.js';
+import { confirmDialog } from '../components/confirmDialog.js';
+import { showToast } from '../components/toast.js';
 import { TEMPLATES } from '../../data/templates/index.js';
 
 // Shown once, right after a brand-new sign-up (Issue #51). A user who has already
 // picked a template can also reach this page later via the dashboard's "Switch
 // template" link to start over with a different one — picking a card in that case
-// replaces the current roadmap, so it's gated behind a confirm(). Every template
+// replaces the current roadmap, so it's gated behind a confirmDialog(). Every template
 // except "blank" can also be hidden from the picker — a per-user preference (see
 // roadmapStore.hideTemplate) that never affects other users or the template itself.
 export function renderOnboarding(app, { user, store }) {
@@ -17,8 +19,14 @@ export function renderOnboarding(app, { user, store }) {
     return;
   }
 
-  const isSwitchingTemplate = store.getSnapshot().onboardingDone;
-  let hiddenTemplateIds = [...store.getSnapshot().hiddenTemplateIds];
+  const snapshot = store.getSnapshot();
+  const isSwitchingTemplate = snapshot.onboardingDone;
+  // Lets the picker mark the active template (see buildCard) and treat re-picking
+  // it as a harmless "go back" instead of silently re-seeding and wiping progress —
+  // without this, a confused user could wipe their own roadmap by "switching" to
+  // the template they're already on.
+  const currentTemplateId = snapshot.templateId;
+  let hiddenTemplateIds = [...snapshot.hiddenTemplateIds];
 
   let picking = false;
   const cardEls = [];
@@ -33,9 +41,17 @@ export function renderOnboarding(app, { user, store }) {
 
   async function pickTemplate(template, cardEl) {
     if (picking) return;
-    if (isSwitchingTemplate && !confirm(
-      `Switch to "${template.name}"? This replaces your current roadmap and progress — this cannot be undone.`
-    )) return;
+    if (isSwitchingTemplate && template.id === currentTemplateId) {
+      showToast("You're already on this roadmap.", 'info');
+      navigate('/app', true);
+      return;
+    }
+    if (isSwitchingTemplate && !await confirmDialog({
+      title: `Switch to "${template.name}"?`,
+      message: 'This replaces your current roadmap and progress — this cannot be undone.',
+      confirmText: 'Switch roadmap',
+      danger: true
+    })) return;
 
     picking = true;
     setBusy(true);
@@ -56,12 +72,18 @@ export function renderOnboarding(app, { user, store }) {
 
   function buildCard(template) {
     const isBlank = template.id === 'blank';
+    const isCurrent = isSwitchingTemplate && template.id === currentTemplateId;
     const countEl = el('span', { className: 'template-card-count', text: 'Loading topics…' });
+    const footerEl = el('div', { className: 'template-card-footer' }, [
+      countEl,
+      isCurrent ? el('span', { className: 'template-card-current-badge', text: 'Current' }) : null
+    ]);
 
     const cardEl = el('div', {
-      className: 'template-card',
+      className: `template-card${isCurrent ? ' template-card-current' : ''}`,
       role: 'button',
       tabindex: '0',
+      'aria-current': isCurrent ? 'true' : null,
       onClick: () => pickTemplate(template, cardEl),
       onKeydown: e => {
         if (e.target !== cardEl) return; // let the nested hide/info button handle its own keys
@@ -74,7 +96,7 @@ export function renderOnboarding(app, { user, store }) {
       el('span', { className: 'template-card-icon', 'aria-hidden': 'true', text: template.icon }),
       el('span', { className: 'template-card-name', text: template.name }),
       el('span', { className: 'template-card-desc', text: template.description }),
-      countEl,
+      footerEl,
       isBlank
         ? el('button', {
           type: 'button',
@@ -111,7 +133,11 @@ export function renderOnboarding(app, { user, store }) {
   }
 
   async function hideTemplate(template, cardEl) {
-    if (!confirm(`Hide "${template.name}"? You can restore it anytime from "Show hidden templates" below.`)) return;
+    if (!await confirmDialog({
+      title: `Hide "${template.name}"?`,
+      message: 'You can restore it anytime from "Show hidden templates" below.',
+      confirmText: 'Hide'
+    })) return;
     await store.hideTemplate(template.id);
     hiddenTemplateIds = [...hiddenTemplateIds, template.id];
     const index = cardEls.indexOf(cardEl);
@@ -178,7 +204,7 @@ export function renderOnboarding(app, { user, store }) {
     el('div', { className: 'auth-page-bg' }),
     el('div', { className: 'onboarding-inner' }, [
       el('div', { className: 'auth-top-row' }, [
-        el('div', { className: 'brand' }, createBrandMark()),
+        el('a', { className: 'brand', href: '#/onboarding', 'aria-label': 'Ascent — all roadmaps' }, createBrandMark()),
         themeToggleBtn
       ]),
       backBtn,

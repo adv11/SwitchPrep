@@ -385,8 +385,9 @@ different template. Fixed by adding a **"Switch template"** link to the dashboar
 header (`navigate('/onboarding')`) and relaxing `onboarding.js`'s self-guard: it no
 longer redirects away when `onboardingDone` is already `true`. Instead, when reached in
 that state it shows a **"← Back to my roadmap"** link and wraps the pick handler in a
-`confirm()` — since `initFromTemplate()` fully replaces `items`, switching is
-destructive and needs explicit confirmation. First-time onboarding
+`confirmDialog()` (originally the native `confirm()`, replaced in the issue #51
+follow-up covered in §5.10) — since `initFromTemplate()` fully replaces `items`,
+switching is destructive and needs explicit confirmation. First-time onboarding
 (`onboardingDone === false`) shows neither the back link nor the confirm prompt, since
 there is no existing roadmap to lose yet.
 
@@ -430,12 +431,55 @@ remove them, but only for me." Two things make this safe:
 unconditionally) when building the visible grid. A "Show hidden templates (N)" toggle
 appears whenever `hiddenTemplateIds` is non-empty, revealing a second row of cards with
 a "Restore" button (`store.unhideTemplate(id)`) instead of the normal pick/hide
-affordances. Hiding and unhiding both go through `confirm()`-free store methods — the
-*hide* action itself is gated behind a `confirm()` in `onboarding.js` (since it's a
-one-click action a user could easily fat-finger), but restoring is not, since it's
+affordances. Hiding and unhiding both go through confirmation-free store methods — the
+*hide* action itself is gated behind a `confirmDialog()` in `onboarding.js` (since it's
+a one-click action a user could easily fat-finger), but restoring is not, since it's
 non-destructive.
 
 Cross-reference: `CLAUDE.md §Per-user hidden templates`.
+
+### 5.10 Custom `confirmDialog()`, the brand-as-home link, and the current-roadmap indicator (Issue #51 follow-up)
+
+Three small UX gaps surfaced from a manual design pass over the onboarding picker and
+dashboard, fixed together since all three touch the same "which roadmap, and what
+happens if I click this" confusion:
+
+**Replacing `window.confirm()`.** Every native `confirm()` call in the app (`onboarding.js`'s
+switch/hide prompts, `dashboard.js`'s sign-out-with-unsaved-changes prompt,
+`itemPanel.js`'s delete-topic prompt) rendered the browser's own unstyleable dialog —
+functional but visibly out of place next to the rest of the app's design system. All
+four now go through the new `src/ui/components/confirmDialog.js`, which returns a
+`Promise<boolean>` and reuses the existing `.modal-overlay`/`.modal-card` chrome
+(same pattern as `dashboard.js`'s delete-account modal and `buildYourOwnGuide.js`).
+`danger: true` swaps the confirm button to the red/`btn-danger` treatment for
+irreversible actions. See `CLAUDE.md §Never use the native window.confirm()`.
+
+**Brand mark as a home link.** `dashboard.js` and `onboarding.js` both wrapped
+`createBrandMark()` in a plain, non-interactive `<div class="brand">` — clicking the
+"Ascent" logo did nothing on either page, unlike the sign-in/sign-up pages where it was
+already `<a href="#/signin">`. Both now use `<a class="brand" href="#/onboarding">`,
+since the template picker is the closest thing this app has to an "all roadmaps" home
+screen. No CSS changes were needed — `.brand` was already anchor-styled
+(`text-decoration: none; color: inherit;`).
+
+**Current-roadmap visibility.** Neither the dashboard nor the "Switch your starter
+roadmap" picker gave any indication of which template was actually active, which
+became a real footgun combined with the picker's destructive re-seed: a user unsure
+whether they were already on, say, the Java Backend roadmap could click that same card
+"just to check" and — before this fix — silently wipe their own progress, since
+`pickTemplate()` didn't special-case re-selecting the current template. Fixed with two
+additions sourced from the same `getTemplate(store.getSnapshot().templateId)` lookup:
+(1) `dashboard.js`'s hero always renders a `.current-roadmap-badge` (icon + template
+name) above the "Learn it. Revise it. Track it." title; (2) `onboarding.js` marks the
+active template's card with a `.template-card-current` highlight and a "Current" badge
+(placed inside the existing `.template-card-footer` row next to the topic count, so it
+doesn't add a new flex row and break the equal-height card layout from §5.10's sibling
+card-grid convention in `CLAUDE.md`), and `pickTemplate()` now short-circuits re-picking
+that same card into a plain `navigate('/app', true)` — no confirmation dialog, no
+`initFromTemplate()` call, no data loss.
+
+Cross-reference: `CLAUDE.md §Never use the native window.confirm()`, `CLAUDE.md §Brand
+mark is a home link`, `CLAUDE.md §The active roadmap must always be visible`.
 
 ---
 
@@ -723,7 +767,8 @@ Saga…") was the last Java-specific string outside the templates themselves; ch
 **Follow-up fixes from manual testing, same PR**: (1) added a "Switch template" link to
 the dashboard header and relaxed `onboarding.js`'s self-guard so it no longer redirects
 an already-onboarded user away — reached that way it shows a "← Back to my roadmap"
-link and a `confirm()` before replacing the roadmap (see §5.8); (2) fixed a real
+link and a confirmation dialog before replacing the roadmap (see §5.8, and §5.10 for the
+later switch from the native `confirm()` to `confirmDialog()`); (2) fixed a real
 concurrency bug where a slow, superseded `setUser()` call could resolve after a newer
 one and clobber its state — most reproducible by deleting an account and immediately
 signing up again with the same email — via a `stateCallId` generation guard shared with
@@ -747,3 +792,29 @@ honest that automated AI import isn't built yet. `onboarding.js`'s card markup c
 from a `<button class="template-card">` to a `<div role="button" tabindex="0">` so each
 card can host a real nested `<button>` (hide or info) without invalid button-in-button
 markup; `firebase/database.rules.json` validates the new `meta.hiddenTemplateIds` array.
+
+### 2026-07-06 — PR #57 — Onboarding UX polish: custom confirm dialog, home link, current-roadmap indicator (issue #51 follow-up)
+
+**New component**: `src/ui/components/confirmDialog.js` — replaces every native
+`window.confirm()` call in the app (`onboarding.js` switch/hide prompts,
+`dashboard.js` sign-out-with-unsaved-changes prompt, `itemPanel.js` delete-topic
+prompt) with a themed `Promise<boolean>`-returning modal built on the existing
+`.modal-overlay`/`.modal-card` styling. See §5.10.
+
+**`src/ui/pages/dashboard.js` / `src/ui/pages/onboarding.js`**: the brand mark
+(`createBrandMark()`) is now wrapped in `<a class="brand" href="#/onboarding">` on
+both pages instead of a non-interactive `<div>`, giving the app a consistent "click
+the logo to go home" affordance (the sign-in/sign-up pages already had this via
+`#/signin`). The dashboard hero also gained a `.current-roadmap-badge` showing the
+active template's icon and name, and the onboarding picker marks the active
+template's card with a `.template-card-current` highlight plus a "Current" badge;
+re-picking that same card now short-circuits to `navigate('/app', true)` instead of
+calling `store.initFromTemplate()` again, which previously would have silently
+re-seeded (and discarded progress on) the roadmap the user was already on. See §5.10.
+
+**`src/styles/app.css`**: also fixed `.template-card` rendering at inconsistent
+heights within the same onboarding grid row (no `height: 100%`, content-sized
+`display: grid` rows) — now a `height: 100%` flex column with the topic-count/footer
+row (`.template-card-footer`) pinned to the bottom via `margin-top: auto`. Documented
+as a required "Card/grid layout" convention in `CLAUDE.md`/`AGENTS.md` for any future
+card-grid component.

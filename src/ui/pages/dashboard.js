@@ -6,6 +6,8 @@ import { showToast } from '../components/toast.js';
 import { createThemeToggle } from '../components/themeToggle.js';
 import { createVerificationBanner } from '../components/verificationBanner.js';
 import { createBrandMark } from '../components/brand.js';
+import { confirmDialog } from '../components/confirmDialog.js';
+import { getTemplate } from '../../data/templates/index.js';
 
 // `templatePhases` is the current user's chosen template's phase/section skeleton
 // (store.getSnapshot().phases) rather than a hardcoded import, so a template with
@@ -98,6 +100,9 @@ export function renderDashboard(app, { user, store }) {
 
   const userLabel = user.isAnonymous ? 'Guest session' : (user.email || 'Signed in');
   const userPillClass = user.isAnonymous ? 'guest' : 'online';
+  // Surfaced in the hero so it's never ambiguous which roadmap is currently
+  // loaded — easy to lose track of after switching templates a few times.
+  const currentTemplate = getTemplate(store.getSnapshot().templateId);
 
   function persistUi() {
     store.setUiState({
@@ -445,7 +450,11 @@ export function renderDashboard(app, { user, store }) {
     offlineBanner,
     el('header', { className: 'dashboard-header' }, [
       el('div', { className: 'header-top' }, [
-        el('div', { className: 'brand' }, createBrandMark({ tagline: 'Your personal progress command center' })),
+        el('a', {
+          className: 'brand',
+          href: '#/onboarding',
+          'aria-label': 'Ascent — all roadmaps'
+        }, createBrandMark({ tagline: 'Your personal progress command center' })),
         el('div', { className: 'header-actions' }, [
           themeToggleBtn,
           syncPill,
@@ -469,7 +478,12 @@ export function renderDashboard(app, { user, store }) {
             text: 'Sign out',
             onClick: async () => {
               if (user.isAnonymous && store.getSnapshot().dirty) {
-                if (!confirm('You have unsaved changes. Sign out anyway?\n\nGuest session data is only stored on this device and will be cleared on sign-out.')) return;
+                if (!await confirmDialog({
+                  title: 'Sign out anyway?',
+                  message: 'You have unsaved changes. Guest session data is only stored on this device and will be cleared on sign-out.',
+                  confirmText: 'Sign out',
+                  danger: true
+                })) return;
               }
               await authApi.signOut();
               navigate('/signin', true);
@@ -479,6 +493,10 @@ export function renderDashboard(app, { user, store }) {
       ]),
       el('div', { className: 'hero-panel' }, [
         el('div', { className: 'hero-copy' }, [
+          el('div', { className: 'current-roadmap-badge' }, [
+            el('span', { 'aria-hidden': 'true', text: currentTemplate.icon }),
+            el('span', { text: `${currentTemplate.name} roadmap` })
+          ]),
           el('h1', { className: 'hero-title', text: 'Learn it. Revise it. Track it.' }),
           el('p', { className: 'hero-text', text: 'Every topic, resource, and priority — all in one editable checklist that syncs across your devices.' })
         ]),

@@ -95,16 +95,13 @@ test.describe('onboarding — switch template from the dashboard', () => {
     await page.locator('button', { hasText: 'Switch template' }).click();
     await expect(page).toHaveURL(/#\/onboarding/, { timeout: 10_000 });
 
-    let dialogMessage = '';
-    page.once('dialog', async dialog => {
-      dialogMessage = dialog.message();
-      await dialog.accept();
-    });
     await page.locator('.template-card', { hasText: 'Data Scientist' }).click();
+    const dialog = page.locator('.modal-overlay[aria-label*="Data Scientist"]');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('replaces your current roadmap');
+    await dialog.locator('[data-action="confirm"]').click();
 
     await expect(page).toHaveURL(/#\/app/, { timeout: 10_000 });
-    expect(dialogMessage).toContain('Data Scientist');
-    expect(dialogMessage).toContain('replaces your current roadmap');
     await expect(page.locator('.phase-name').first()).toContainText('Python for Data Science');
   });
 
@@ -119,13 +116,37 @@ test.describe('onboarding — switch template from the dashboard', () => {
     await page.locator('button', { hasText: 'Switch template' }).click();
     await expect(page).toHaveURL(/#\/onboarding/, { timeout: 10_000 });
 
-    page.once('dialog', dialog => dialog.dismiss());
     await page.locator('.template-card', { hasText: 'Data Scientist' }).click();
+    const dialog = page.locator('.modal-overlay[aria-label*="Data Scientist"]');
+    await expect(dialog).toBeVisible();
+    await dialog.locator('[data-action="cancel"]').click();
+    await expect(dialog).toHaveCount(0);
 
     // Cancelled — still on the onboarding picker, not switched.
     await expect(page).toHaveURL(/#\/onboarding/);
     await page.locator('button', { hasText: 'Back to my roadmap' }).click();
     await expect(page.locator('.phase-name').first()).toContainText('Core Java');
+  });
+
+  test('the currently active template is marked "Current", and re-picking it just returns to the dashboard unchanged', async ({ page }) => {
+    test.skip(!FIREBASE_CONFIGURED, 'Requires FIREBASE_CONFIGURED env var — see issue #37');
+    await page.goto('/');
+    await page.click('text=Continue as guest');
+    await expect(page).toHaveURL(/#\/onboarding/, { timeout: 10_000 });
+    await page.locator('.template-card', { hasText: 'Java Backend Engineer' }).click();
+    await expect(page).toHaveURL(/#\/app/, { timeout: 10_000 });
+
+    await page.locator('button', { hasText: 'Switch template' }).click();
+    await expect(page).toHaveURL(/#\/onboarding/, { timeout: 10_000 });
+
+    const currentCard = page.locator('.template-card', { hasText: 'Java Backend Engineer' });
+    await expect(currentCard.locator('.template-card-current-badge')).toContainText('Current');
+
+    await currentCard.click();
+    await expect(page).toHaveURL(/#\/app/, { timeout: 10_000 });
+    await expect(page.locator('.phase-name').first()).toContainText('Core Java');
+    // No confirmation dialog should have appeared for re-picking the same template.
+    await expect(page.locator('.modal-overlay')).toHaveCount(0);
   });
 });
 
@@ -139,8 +160,10 @@ test.describe('onboarding — hiding and restoring templates', () => {
     const pianoCard = page.locator('.template-card', { hasText: 'Learning Piano' });
     await expect(pianoCard).toBeVisible();
 
-    page.once('dialog', dialog => dialog.accept());
     await pianoCard.locator('.template-card-hide').click();
+    const dialog = page.locator('.modal-overlay[aria-label*="Learning Piano"]');
+    await expect(dialog).toBeVisible();
+    await dialog.locator('[data-action="confirm"]').click();
 
     await expect(page.locator('.template-card', { hasText: 'Learning Piano' })).toHaveCount(0);
     const toggle = page.locator('.hidden-templates-toggle');
@@ -161,8 +184,10 @@ test.describe('onboarding — hiding and restoring templates', () => {
     await page.click('text=Continue as guest');
     await expect(page).toHaveURL(/#\/onboarding/, { timeout: 10_000 });
 
-    page.once('dialog', dialog => dialog.dismiss());
     await page.locator('.template-card', { hasText: 'Marketing' }).locator('.template-card-hide').click();
+    const dialog = page.locator('.modal-overlay[aria-label*="Marketing"]');
+    await expect(dialog).toBeVisible();
+    await dialog.locator('[data-action="cancel"]').click();
 
     await expect(page.locator('.template-card', { hasText: 'Marketing' })).toBeVisible();
     await expect(page.locator('.hidden-templates-toggle')).toHaveCount(0);
@@ -185,8 +210,8 @@ test.describe('onboarding — hiding and restoring templates', () => {
     await page.click('text=Continue as guest');
     await expect(page).toHaveURL(/#\/onboarding/, { timeout: 10_000 });
 
-    page.once('dialog', dialog => dialog.accept());
     await page.locator('.template-card', { hasText: 'Learning Piano' }).locator('.template-card-hide').click();
+    await page.locator('.modal-overlay[aria-label*="Learning Piano"] [data-action="confirm"]').click();
     await expect(page.locator('.template-card', { hasText: 'Learning Piano' })).toHaveCount(0);
 
     await page.reload();
