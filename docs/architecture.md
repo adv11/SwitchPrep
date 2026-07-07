@@ -1024,7 +1024,7 @@ Superseded the original issue #4's "default pinned/read-only roadmap" proposal �
 separate read-only "default" concept would have been redundant. AI-assisted import
 shipped separately — see the entry below.
 
-### 2026-07-07 — PR #61 — AI-assisted roadmap import (issue #4)
+### 2026-07-07 — PR #62 — AI-assisted roadmap import (issue #4)
 
 Added the AI-import half of issue #4, on top of PR #60's manual-CRUD custom-roadmap
 data model. Two new pure modules with a strict one-way dependency (adapter depends on
