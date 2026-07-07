@@ -1,8 +1,10 @@
 import { el } from '../dom.js';
 import { navigate } from '../router.js';
 import { authApi, authErrorMessage } from '../../services/firebase.js';
+import { requestInitialToken } from '../../services/googleDriveAuth.js';
 import { showToast } from '../components/toast.js';
 import { authShell } from '../components/authShell.js';
+import { confirmDialog } from '../components/confirmDialog.js';
 import { makePasswordToggle } from '../utils/password.js';
 
 export function renderSignIn(app, { user }) {
@@ -38,6 +40,7 @@ export function renderSignIn(app, { user }) {
       placeholder: 'Your password', autocomplete: 'current-password'
     });
     const submitBtn = el('button', { type: 'submit', className: 'btn btn-primary btn-block', text: 'Sign in' });
+    const googleBtn = el('button', { type: 'button', className: 'btn btn-secondary btn-block', text: 'Sign in with Google' });
     const guestBtn = el('button', { type: 'button', className: 'btn btn-secondary btn-block', text: 'Continue as guest' });
     const forgotBtn = el('button', { type: 'button', className: 'forgot-link', text: 'Forgot password?' });
     const rememberCheckbox = el('input', { type: 'checkbox', id: 'rememberMe', className: 'remember-checkbox', checked: 'true' });
@@ -47,6 +50,7 @@ export function renderSignIn(app, { user }) {
 
     function setBusy(busy) {
       submitBtn.disabled = busy;
+      googleBtn.disabled = busy;
       guestBtn.disabled = busy;
       forgotBtn.disabled = busy;
     }
@@ -76,6 +80,41 @@ export function renderSignIn(app, { user }) {
       }
     }
 
+    async function handleGoogleSignIn() {
+      const proceed = await confirmDialog({
+        title: 'Sign in with Google',
+        message: 'This will save your progress to a private folder in your Google Drive that only this app can access — nothing else in your Drive is touched.',
+        confirmText: 'Continue',
+        cancelText: 'Cancel'
+      });
+      if (!proceed) return;
+
+      message.textContent = '';
+      message.className = 'form-message';
+      setBusy(true);
+      try {
+        // Drive token first, deliberately: main.js's authApi.onChange fires
+        // as soon as the Firebase identity popup below resolves, and it
+        // immediately calls store.setUser(user) -> googleDriveAdapter.getMeta()
+        // — which needs a usable access token already in memory at that
+        // point. Getting the Drive grant first avoids that race entirely.
+        // Separate grant from the identity popup below — see
+        // googleDriveAuth.js's requestInitialToken() doc comment.
+        await requestInitialToken();
+        await authApi.signInWithGoogle();
+        showToast('Signed in with Google. Syncing your roadmap…', 'success');
+        navigate('/app', true);
+      } catch (error) {
+        await authApi.signOut().catch(() => {});
+        message.textContent = authErrorMessage(error);
+        message.className = 'form-message error';
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    googleBtn.addEventListener('click', handleGoogleSignIn);
+
     guestBtn.addEventListener('click', async () => {
       message.textContent = '';
       setBusy(true);
@@ -94,6 +133,8 @@ export function renderSignIn(app, { user }) {
     forgotBtn.addEventListener('click', () => showResetView(emailInput.value.trim()));
 
     const form = el('form', { className: 'auth-form', onSubmit: handleSubmit }, [
+      googleBtn,
+      el('div', { className: 'auth-divider' }, [el('span', { text: 'or' })]),
       el('label', { className: 'field' }, [
         el('span', { className: 'field-label', text: 'Email' }),
         emailInput

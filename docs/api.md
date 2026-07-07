@@ -136,7 +136,7 @@ Pure — no DOM, no store, no Firebase. Only ever called on data that has alread
 
 | Export | Signature | Notes |
 |---|---|---|
-| `authApi` | `signIn, signUp, guest, signOut, linkGuest, sendResetEmail, sendVerificationEmail, setPersistence, deleteAccount, onChange` | Thin wrappers around Firebase Auth. |
+| `authApi` | `signIn, signUp, guest, signInWithGoogle, signOut, linkGuest, sendResetEmail, sendVerificationEmail, setPersistence, deleteAccount, onChange` | Thin wrappers around Firebase Auth. `signInWithGoogle()` (issue #5 part 3) is identity-only — `signInWithPopup(auth, new GoogleAuthProvider())`, no Drive scope requested here. Callers must separately obtain a Drive access token via `googleDriveAuth.js` — see below. |
 | `authErrorMessage` | `(error) => string` | Maps Firebase Auth error codes to user-facing copy. |
 | `database` | Firebase `Database` instance | Consumed only by `FirebaseAdapter` (below) — no other module should read/write the Realtime Database directly. |
 | `firebaseClock` | `() => ServerValue` | Firebase's `serverTimestamp()` sentinel. Consumed only by `FirebaseAdapter.now()`. |
@@ -186,18 +186,35 @@ overridden; optional ones have safe defaults.
 
 Google Drive `appDataFolder` implementation, built with raw `fetch` against the Drive
 REST API (no SDK dependency). Decoupled from *how* an access token is obtained: takes a
-`getAccessToken()` provider (and optional `onTokenExpired()`) via its constructor rather
-than doing any OAuth/GIS work itself — that's issue #5 part 3's job. `uid` is accepted on
+`getAccessToken()` provider (and optional `onTokenExpired()`) via its constructor, and via
+`configure()` post-construction (issue #5 part 3 — see `googleDriveAuth.js` below) rather
+than doing any OAuth/GIS work itself. `uid` is accepted on
 every method for interface conformance but ignored (the token already scopes every
 request to one Drive account).
 
 | Export | Signature | Notes |
 |---|---|---|
 | `GoogleDriveAdapter` | `class extends StorageAdapter` | Constructor: `new GoogleDriveAdapter({ getAccessToken, onTokenExpired })`. Stores one file per template (`ascent-roadmap-{templateId}.json`) plus `ascent-meta.json`, all in `appDataFolder`. `saveRoadmap`: find-by-name → create (multipart) if missing, else `PATCH .../upload/drive/v3/files/{id}?uploadType=media` with `If-Match: {etag}` (Drive v3 exposes the etag as a response header, not a JSON field) → on `412`, re-`GET` + last-write-wins-per-item merge (keyed by `item.updatedAt`) + retry once. `phases` is not merged the same way — the local copy wins outright on conflict (custom-roadmap phase edits are rare; a documented scope simplification). `getRoadmap`/`getMeta` find-by-name then `GET ?alt=media`, resolving `null` if no file exists. `saveMeta` is a simpler read-merge-write (no etag-conflict-retry — meta writes are infrequent, not per-keystroke). `deleteRoadmap` finds-by-name then `DELETE`s. `listenRoadmap` has no realtime push to rely on — polls via `visibilitychange`/`focus` listeners instead, catching its own errors and routing them to `onError` (a fire-and-forget path nothing awaits, so it must never produce an unhandled rejection). `now()` returns `new Date().toISOString()`. A `401` from any request calls `onTokenExpired()` then rejects like any other failed request — never thrown as an unhandled/user-facing error; existing caller-side handling (`resolveRoadmapItems`'s try/catch, `queueSave()`'s `.catch()`) already covers it, same as any `FirebaseAdapter` failure. |
-| `googleDriveAdapter` | `GoogleDriveAdapter` instance | Singleton used by `adapterFactory.js`. Constructed with a placeholder `getAccessToken` that throws "not yet wired up" if ever actually invoked — unreachable in production until issue #5 part 3 ships real Google sign-in. |
+| `GoogleDriveAdapter.prototype.configure` | `({ getAccessToken?, onTokenExpired? }) => void` | Issue #5 part 3. Overwrites either or both hooks on an existing instance without replacing it — how `googleDriveAuth.js` wires the real Drive-token provider into the module-level singleton below at boot. |
+| `googleDriveAdapter` | `GoogleDriveAdapter` instance | Singleton used by `adapterFactory.js`. Constructed with a placeholder `getAccessToken` that throws until `configure()` is called; `main.js` triggers that (via importing `googleDriveAuth.js`) at boot, before any sign-in can resolve. |
+
+### `googleDriveAuth.js` — `src/services/googleDriveAuth.js` (issue #5 part 3)
+
+Google Identity Services (GIS) token-client wiring — obtains and silently refreshes the
+Drive-scoped access token `GoogleDriveAdapter` needs, independent of Firebase Auth's own
+identity popup (`authApi.signInWithGoogle()`). The GIS script
+(`https://accounts.google.com/gsi/client`) is loaded lazily and memoized on first use.
+
+| Export | Signature | Notes |
+|---|---|---|
+| `requestInitialToken` | `() => Promise<string>` | Shows GIS's own popup/consent for `drive.appdata` scope. Called from `signIn.js` **before** `authApi.signInWithGoogle()` — see the "Google Sign-In + Drive token handling" note in `CLAUDE.md` for why the order is load-bearing, not stylistic. Rejects if the grant is denied/closed. |
+| `getAccessToken` | `() => string` | Synchronous — returns the current in-memory token or throws. Passed to `googleDriveAdapter.configure()`; `GoogleDriveAdapter.request()` calls it un-awaited, so it can never return a Promise. |
+| `handleTokenExpired` | `() => Promise<void>` | Passed to `googleDriveAdapter.configure()` as `onTokenExpired`. One immediate silent refresh (`requestAccessToken({ prompt: '' })`); on failure, shows a "sign in again" toast (deduped so repeated failures don't spam it) rather than surfacing an error or opening an unsolicited popup. |
+| `reacquireIfGoogleUser` | `(user) => Promise<void> \| undefined` | Called from `main.js` on every `authApi.onChange`, after `store.setUser(user)`. No-op unless `user` is Google-signed-in (via `adapterFactory.isGoogleUser`); otherwise attempts the same silent refresh as `handleTokenExpired`, covering a page reload that restored a persisted Firebase session. |
 
 ### `adapterFactory.js` — `src/services/storage/adapterFactory.js`
 
 | Export | Signature | Notes |
 |---|---|---|
 | `getStorageAdapter` | `(user?: { providerData?: { providerId: string }[] } \| null) => StorageAdapter` | Issue #5 part 2 — branches on the signed-in user's auth provider: `providerData` containing `providerId: 'google.com'` → `googleDriveAdapter`; everything else (`null`/missing user, anonymous guest, email/password) → `firebaseAdapter`, identical to before this backend existed. `roadmapStore.js`'s `setUser(nextUser)` calls this on every sign-in (not just once at store creation) so the backend can change across sign-out/sign-in-as-a-different-user within the same store instance. |
+| `isGoogleUser` | `(user) => boolean` | The exact predicate `getStorageAdapter` uses internally, exported (issue #5 part 3) so `googleDriveAuth.js`'s `reacquireIfGoogleUser` shares the same single source of truth rather than re-implementing the check. |

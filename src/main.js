@@ -2,6 +2,9 @@ import { authApi } from './services/firebase.js';
 import { createRoadmapStore } from './services/roadmapStore.js';
 import { initTheme } from './services/theme.js';
 import { migrateLocalStorageKeys } from './services/migration.js';
+// Importing this wires the real Drive token provider into googleDriveAdapter
+// (issue #5 part 3) — see the module's own bottom-of-file comment.
+import { reacquireIfGoogleUser } from './services/googleDriveAuth.js';
 import { startRouter, registerRoute, navigate, getRoute } from './ui/router.js';
 import { renderSignIn } from './ui/pages/signIn.js';
 import { renderSignUp } from './ui/pages/signUp.js';
@@ -32,6 +35,11 @@ function guardApp(renderFn) {
 authApi.onChange(async user => {
   currentUser = user;
   await store.setUser(user);
+  // Covers page reload restoring a persisted Google session — silently try
+  // to reacquire a Drive access token (GIS's silent-refresh grant) so the
+  // app can load from Drive without a visible re-login. No-op for any other
+  // user type.
+  reacquireIfGoogleUser(user);
 
   const route = getRoute();
   const publicRoutes = ['/signin', '/signup'];

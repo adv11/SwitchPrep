@@ -19,7 +19,7 @@ vi.mock('../../../src/services/firebase.js', () => ({
   firebaseClock: vi.fn()
 }));
 
-const { getStorageAdapter } = await import('../../../src/services/storage/adapterFactory.js');
+const { getStorageAdapter, isGoogleUser } = await import('../../../src/services/storage/adapterFactory.js');
 const { firebaseAdapter } = await import('../../../src/services/storage/FirebaseAdapter.js');
 const { googleDriveAdapter } = await import('../../../src/services/storage/GoogleDriveAdapter.js');
 
@@ -47,5 +47,14 @@ describe('adapterFactory — getStorageAdapter', () => {
   it('returns the Google Drive adapter even when providerData has multiple entries', () => {
     const linkedUser = { uid: 'user-3', providerData: [{ providerId: 'password' }, { providerId: 'google.com' }] };
     expect(getStorageAdapter(linkedUser)).toBe(googleDriveAdapter);
+  });
+});
+
+describe('adapterFactory — isGoogleUser', () => {
+  it('is exported for reuse by googleDriveAuth.js (issue #5 part 3)', () => {
+    expect(isGoogleUser({ providerData: [{ providerId: 'google.com' }] })).toBe(true);
+    expect(isGoogleUser({ providerData: [{ providerId: 'password' }] })).toBe(false);
+    expect(isGoogleUser(null)).toBe(false);
+    expect(isGoogleUser(undefined)).toBe(false);
   });
 });

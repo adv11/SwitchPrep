@@ -65,12 +65,19 @@ CSP directives chosen:
 | Directive | Value | Reason |
 |---|---|---|
 | `default-src` | `'self'` | Catchall — only same-origin resources allowed by default |
-| `script-src` | `'self' https://www.gstatic.com` | Firebase SDK CDN modules |
+| `script-src` | `'self' https://www.gstatic.com https://accounts.google.com https://apis.google.com` | Firebase SDK CDN modules; `accounts.google.com` is the dynamically-loaded Google Identity Services token client (`googleDriveAuth.js`, issue #5 part 3); `apis.google.com` is Google's `gapi` client library Firebase's own popup-based sign-in loads for cross-window messaging, for any provider |
 | `style-src` | `'self' https://fonts.googleapis.com` | Google Fonts CSS |
 | `font-src` | `https://fonts.gstatic.com` | Google Fonts font files |
-| `connect-src` | `https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com http://127.0.0.1:9099 http://127.0.0.1:9000 ws://127.0.0.1:9000` | Firebase Realtime Database (HTTPS + WebSocket), Auth REST, token refresh, plus the local Auth/Database emulator ports used by `FIREBASE_CONFIGURED=true` E2E runs (`connectAuthEmulator`/`connectDatabaseEmulator` in `firebase.js`) |
+| `connect-src` | `https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com https://www.googleapis.com https://oauth2.googleapis.com http://127.0.0.1:9099 http://127.0.0.1:9000 ws://127.0.0.1:9000` | Firebase Realtime Database (HTTPS + WebSocket), Auth REST, token refresh, the Google Drive REST API + GIS token endpoint (issue #5 parts 2–3), plus the local Auth/Database emulator ports used by `FIREBASE_CONFIGURED=true` E2E runs (`connectAuthEmulator`/`connectDatabaseEmulator` in `firebase.js`) |
+| `frame-src` | `https://accounts.google.com http://127.0.0.1:9099` | The popup-sign-in cross-window relay iframe Firebase's Auth SDK loads, from whichever host is actually running the auth handler — production Google, or (local/CI only) the Auth Emulator |
 | `img-src` | `'self' data:` | Allows inline SVG data URIs (used by favicon/icons) |
 | `frame-ancestors` | `'none'` | Belt-and-suspenders with X-Frame-Options: DENY |
+
+Note: the Google Identity Services script (`https://accounts.google.com/gsi/client`,
+loaded dynamically by `googleDriveAuth.js`) intentionally carries **no SRI hash** —
+Google documents it as unversioned/uncacheable, so it can't be pinned the way the
+Firebase SDK modules below are. This is the one deliberate exception to this ADR's SRI
+requirement.
 
 The `127.0.0.1` emulator entries only matter when `window.__USE_FIREBASE_EMULATOR__` is
 set (CI E2E and local emulator testing per issue #37) — production and normal local dev

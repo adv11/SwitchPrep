@@ -16,3 +16,11 @@ export const firebaseConfig = {
   appId: 'YOUR_APP_ID',
   measurementId: 'YOUR_MEASUREMENT_ID'
 };
+
+// OAuth Web Client ID for Google Sign-In + Drive sync (issue #5 part 3).
+// Enable the Google sign-in provider in Firebase Console -> Authentication ->
+// Sign-in method first (this auto-creates the OAuth client in the linked
+// Google Cloud project); then copy its Client ID from Google Cloud Console ->
+// APIs & Services -> Credentials. See CLAUDE.md for the full checklist
+// (enabling the Drive API, OAuth consent screen scopes, authorized origins).
+export const googleClientId = 'YOUR_GOOGLE_OAUTH_CLIENT_ID';

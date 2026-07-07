@@ -223,9 +223,33 @@ describe('GoogleDriveAdapter', () => {
   });
 
   describe('constructor without a token provider', () => {
-    it('throws a clear error only when actually used, matching the "not yet wired up" contract', () => {
+    it('throws a clear error only when actually used, until configure() is called', () => {
       const adapter = new GoogleDriveAdapter();
-      expect(() => adapter.getAccessToken()).toThrow(/not yet wired up/);
+      expect(() => adapter.getAccessToken()).toThrow(/call configure\(\) first/);
+    });
+  });
+
+  describe('configure()', () => {
+    it('wires in a real getAccessToken/onTokenExpired pair after construction (issue #5 part 3)', () => {
+      const adapter = new GoogleDriveAdapter();
+      const getAccessToken = () => 'real-token';
+      const onTokenExpired = vi.fn();
+
+      adapter.configure({ getAccessToken, onTokenExpired });
+
+      expect(adapter.getAccessToken()).toBe('real-token');
+      expect(adapter.onTokenExpired).toBe(onTokenExpired);
+    });
+
+    it('leaves an existing hook alone when only one is passed', () => {
+      const originalOnTokenExpired = vi.fn();
+      const adapter = new GoogleDriveAdapter({ getAccessToken: () => 'tok', onTokenExpired: originalOnTokenExpired });
+
+      const newGetAccessToken = () => 'new-tok';
+      adapter.configure({ getAccessToken: newGetAccessToken });
+
+      expect(adapter.getAccessToken()).toBe('new-tok');
+      expect(adapter.onTokenExpired).toBe(originalOnTokenExpired);
     });
   });
 });

@@ -13,6 +13,8 @@ import {
   browserSessionPersistence,
   deleteUser,
   EmailAuthProvider,
+  GoogleAuthProvider,
+  signInWithPopup,
   linkWithCredential,
   reauthenticateWithCredential,
   connectAuthEmulator
@@ -57,6 +59,17 @@ export const authApi = {
   guest() {
     return signInAnonymously(auth);
   },
+  // Identity only — establishes `auth.currentUser.providerData` containing
+  // `{ providerId: 'google.com' }`, which is all `adapterFactory.js` needs to
+  // route this user to `googleDriveAdapter` (issue #5 part 3). Deliberately
+  // does NOT request the Drive scope here: the Drive-scoped access token is a
+  // separate grant obtained through `googleDriveAuth.js`'s own Google
+  // Identity Services token client, which (unlike this popup) can silently
+  // refresh without a visible re-prompt. Callers must request that token
+  // themselves right after this resolves — see signIn.js.
+  signInWithGoogle() {
+    return signInWithPopup(auth, new GoogleAuthProvider());
+  },
   signOut() {
     return signOut(auth);
   },
@@ -92,7 +105,10 @@ export function authErrorMessage(error) {
     'auth/user-not-found': 'No account found for that email.',
     'auth/weak-password': 'Use at least 6 characters for the password.',
     'auth/wrong-password': 'Email or password is incorrect.',
-    'auth/requires-recent-login': 'For security, please sign out and sign in again before deleting your account.'
+    'auth/requires-recent-login': 'For security, please sign out and sign in again before deleting your account.',
+    'auth/popup-closed-by-user': 'Sign-in was closed before finishing. Try again.',
+    'auth/cancelled-popup-request': 'Sign-in was closed before finishing. Try again.',
+    'auth/popup-blocked': 'Your browser blocked the sign-in popup. Allow popups for this site and try again.'
   };
   return messages[error?.code] || error?.message || 'Something went wrong. Please try again.';
 }

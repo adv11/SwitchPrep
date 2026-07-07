@@ -1,14 +1,20 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../src/services/firebase.js', () => ({
   authApi: {
     signIn: vi.fn(),
+    signInWithGoogle: vi.fn(),
+    signOut: vi.fn(),
     guest: vi.fn(),
     sendResetEmail: vi.fn(),
     setPersistence: vi.fn(),
     onChange: vi.fn(),
   },
   authErrorMessage: (e) => e?.message || 'error',
+}));
+
+vi.mock('../../src/services/googleDriveAuth.js', () => ({
+  requestInitialToken: vi.fn(),
 }));
 
 vi.mock('../../src/ui/router.js', () => ({ navigate: vi.fn() }));
@@ -202,5 +208,77 @@ describe('sign-in page — remember me', () => {
     app.querySelector('form').requestSubmit();
 
     await vi.waitFor(() => expect(authApi.setPersistence).toHaveBeenCalledWith(false));
+  });
+});
+
+describe('sign-in page — Google sign-in', () => {
+  afterEach(() => {
+    document.querySelectorAll('.modal-overlay').forEach(el => el.remove());
+  });
+
+  it('renders a "Sign in with Google" button', async () => {
+    const { app } = await setup();
+    const btn = [...app.querySelectorAll('button')].find(b => b.textContent === 'Sign in with Google');
+    expect(btn).not.toBeUndefined();
+  });
+
+  it('shows the pre-consent notice before calling signInWithGoogle', async () => {
+    const { app, authApi } = await setup();
+    const btn = [...app.querySelectorAll('button')].find(b => b.textContent === 'Sign in with Google');
+    btn.click();
+
+    await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).not.toBeNull());
+    expect(authApi.signInWithGoogle).not.toHaveBeenCalled();
+  });
+
+  it('does not sign in when the consent notice is cancelled', async () => {
+    const { app, authApi } = await setup();
+    const btn = [...app.querySelectorAll('button')].find(b => b.textContent === 'Sign in with Google');
+    btn.click();
+
+    await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).not.toBeNull());
+    document.querySelector('.modal-overlay [data-action="cancel"]').click();
+
+    await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).toBeNull());
+    expect(authApi.signInWithGoogle).not.toHaveBeenCalled();
+  });
+
+  it('signs in with Google, requests a Drive token, and navigates on success', async () => {
+    const { navigate } = await import('../../src/ui/router.js');
+    const { authApi } = await import('../../src/services/firebase.js');
+    const { requestInitialToken } = await import('../../src/services/googleDriveAuth.js');
+    authApi.signInWithGoogle.mockResolvedValue({ user: { uid: 'g1' } });
+    requestInitialToken.mockResolvedValue('drive-token');
+
+    const { app } = await setup();
+    const btn = [...app.querySelectorAll('button')].find(b => b.textContent === 'Sign in with Google');
+    btn.click();
+
+    await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).not.toBeNull());
+    document.querySelector('.modal-overlay [data-action="confirm"]').click();
+
+    await vi.waitFor(() => expect(authApi.signInWithGoogle).toHaveBeenCalled());
+    await vi.waitFor(() => expect(requestInitialToken).toHaveBeenCalled());
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/app', true));
+    expect(authApi.signOut).not.toHaveBeenCalled();
+  });
+
+  it('signs the user back out and shows an error if the Drive token request fails', async () => {
+    const { authApi } = await import('../../src/services/firebase.js');
+    const { requestInitialToken } = await import('../../src/services/googleDriveAuth.js');
+    authApi.signInWithGoogle.mockResolvedValue({ user: { uid: 'g1' } });
+    authApi.signOut.mockResolvedValue();
+    requestInitialToken.mockRejectedValue(new Error('Drive access token expired'));
+
+    const { app } = await setup();
+    const btn = [...app.querySelectorAll('button')].find(b => b.textContent === 'Sign in with Google');
+    btn.click();
+
+    await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).not.toBeNull());
+    document.querySelector('.modal-overlay [data-action="confirm"]').click();
+
+    await vi.waitFor(() => expect(authApi.signOut).toHaveBeenCalled());
+    const msg = app.querySelector('.form-message');
+    expect(msg.classList.contains('error')).toBe(true);
   });
 });

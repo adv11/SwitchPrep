@@ -11,10 +11,11 @@
   <meta property="og:image" content="/public/og-image.png">
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'self';
-             script-src 'self' https://www.gstatic.com;
+             script-src 'self' https://www.gstatic.com https://accounts.google.com https://apis.google.com;
              style-src 'self' https://fonts.googleapis.com;
              font-src https://fonts.gstatic.com;
-             connect-src https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com http://127.0.0.1:9099 http://127.0.0.1:9000 ws://127.0.0.1:9000;
+             connect-src https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com https://www.googleapis.com https://oauth2.googleapis.com http://127.0.0.1:9099 http://127.0.0.1:9000 ws://127.0.0.1:9000;
+             frame-src https://accounts.google.com http://127.0.0.1:9099;
              img-src 'self' data:;
              frame-ancestors 'none'">
   <title>Ascent</title>
@@ -25,6 +26,11 @@
   <!-- Theme must be applied synchronously before CSS loads to prevent flash of wrong theme.
        Extracted to an external file so the CSP can use 'self' without 'unsafe-inline'. -->
   <script src="./src/services/themeBootstrap.js"></script>
+  <!-- Google Identity Services (src/services/googleDriveAuth.js, issue #5 part 3) is
+       loaded dynamically at runtime, not pinned here — Google documents the GIS client
+       script as intentionally uncacheable/unversioned, so it cannot carry an SRI hash
+       the way the Firebase SDK modules below can. This is a deliberate, narrow exception
+       to the "SRI mandatory for CDN scripts" rule; see CLAUDE.md. -->
   <!-- SRI hashes lock these CDN modules to the exact bytes we audited.
        Update both the import URL in firebase.js and these hashes whenever upgrading Firebase SDK. -->
   <link rel="modulepreload" crossorigin="anonymous"

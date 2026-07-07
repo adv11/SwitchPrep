@@ -1,7 +1,10 @@
 import { firebaseAdapter } from './FirebaseAdapter.js';
 import { googleDriveAdapter } from './GoogleDriveAdapter.js';
 
-function isGoogleUser(user) {
+// Exported so googleDriveAuth.js (issue #5 part 3) can reuse the exact same
+// check to decide when to silently reacquire a Drive access token on boot —
+// a single source of truth for "what counts as a Google-signed-in user".
+export function isGoogleUser(user) {
   return !!user?.providerData?.some(p => p.providerId === 'google.com');
 }
 

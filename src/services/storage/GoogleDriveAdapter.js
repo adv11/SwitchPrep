@@ -31,12 +31,12 @@ function mergeItemsLastWriteWins(localItems = {}, remoteItems = {}) {
 //
 // Decoupled from *how* an access token is obtained: the caller supplies a
 // `getAccessToken()` provider (and optionally `onTokenExpired()`) rather than
-// this class doing any OAuth/GIS work itself — that's part 3's job, wiring a
-// real Google Identity Services flow to these hooks. `googleDriveAdapter`
-// below is constructed with a placeholder provider that throws if actually
-// invoked; nothing in production can reach it yet since no UI creates a
-// Google-authenticated user (`providerData` with `providerId: 'google.com'`)
-// until part 3 ships.
+// this class doing any OAuth/GIS work itself. `googleDriveAdapter` below is a
+// singleton constructed with a placeholder provider that throws if actually
+// invoked; `configure()` lets `src/services/googleDriveAuth.js` (issue #5
+// part 3) wire in the real Google Identity Services-backed hooks after
+// construction, without replacing the singleton — `adapterFactory.js` and its
+// tests depend on `googleDriveAdapter` staying the same object identity.
 //
 // `uid` is accepted on every method for interface conformance but ignored —
 // the access token already scopes every request to one Drive account, unlike
@@ -45,9 +45,18 @@ export class GoogleDriveAdapter extends StorageAdapter {
   constructor({ getAccessToken, onTokenExpired } = {}) {
     super();
     this.getAccessToken = getAccessToken || (() => {
-      throw new Error('GoogleDriveAdapter requires a getAccessToken() token provider — not yet wired up (issue #5 part 3)');
+      throw new Error('GoogleDriveAdapter requires a getAccessToken() token provider — call configure() first (see googleDriveAuth.js)');
     });
     this.onTokenExpired = onTokenExpired || (() => {});
+  }
+
+  // Post-construction wiring point (issue #5 part 3): lets the app supply the
+  // real token provider once real Google sign-in exists, without replacing
+  // the module-level `googleDriveAdapter` singleton. Called once at boot in
+  // `main.js`, before any sign-in can resolve.
+  configure({ getAccessToken, onTokenExpired } = {}) {
+    if (getAccessToken) this.getAccessToken = getAccessToken;
+    if (onTokenExpired) this.onTokenExpired = onTokenExpired;
   }
 
   // Every Drive call flows through here so token-expiry handling is applied

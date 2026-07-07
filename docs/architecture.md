@@ -731,10 +731,10 @@ Identity Services flow to these two hooks.
   rejection.
 - **`now()`** returns `new Date().toISOString()` — this is *why* part 1 made
   `StorageAdapter.now()` adapter-specific instead of a shared `Date.now()`.
-- **Token expiry**: a `401` from any request calls `onTokenExpired()` (a no-op until part
-  3 wires it to GIS's silent-refresh) and then rejects like any other failed request —
-  never thrown as an unhandled or user-facing error, since every existing caller already
-  handles a rejected adapter call gracefully.
+- **Token expiry**: a `401` from any request calls `onTokenExpired()` (wired to GIS's
+  silent-refresh by part 3 — see §5.14 below) and then rejects like any other failed
+  request — never thrown as an unhandled or user-facing error, since every existing
+  caller already handles a rejected adapter call gracefully.
 
 **`adapterFactory.getStorageAdapter(user)`** now branches on `user.providerData` —
 `providerId: 'google.com'` selects `googleDriveAdapter`, everything else (missing/null
@@ -747,12 +747,88 @@ so a later sign-in as a different auth type always re-selects the right backend.
 `switchRoadmap()` doesn't touch auth and so doesn't need to reselect. For every account
 that exists today (anonymous or email/password — no `providerData` with `google.com`),
 this resolves to `firebaseAdapter` exactly as before: no behavior change for any
-reachable user, since `googleDriveAdapter` is a singleton constructed with a placeholder
-token provider that throws if ever actually invoked, and nothing in production can
-create a Google-authenticated user until part 3 ships.
+account that predates Google sign-in.
 
 Cross-reference: `CLAUDE.md §Storage adapter abstraction`, `docs/api.md §Storage
 adapters`.
+
+### 5.14 Real Google Sign-In + GIS token wiring (Issue #5, part 3 of 3)
+
+`googleDriveAdapter` (§5.13) is reachable in production now: `src/services/
+googleDriveAuth.js` supplies the real `getAccessToken`/`onTokenExpired` pair via
+`googleDriveAdapter.configure(...)`, and `src/ui/pages/signIn.js` adds the "Sign in with
+Google" button the issue's sign-in-screen mock calls for.
+
+**Two separate OAuth grants, not one.** `authApi.signInWithGoogle()` (`firebase.js`) is a
+plain `signInWithPopup(auth, new GoogleAuthProvider())` — identity only, no scopes beyond
+Firebase's defaults. It's what makes `user.providerData` contain `google.com`, which
+`adapterFactory`'s existing (§5.13) check already keyed off of — zero changes needed
+there. The Drive-scoped access token is a **separate** grant, obtained through a Google
+Identity Services (GIS) token client (`googleDriveAuth.js`, `scope:
+'https://www.googleapis.com/auth/drive.appdata'`) rather than through Firebase's own
+popup credential. This split exists because GIS's token client supports silent,
+no-popup refresh (`requestAccessToken({ prompt: '' })`) using the browser's existing
+Google session — Firebase's popup-obtained OAuth credential has no equivalent renewal
+path, and issue #5 explicitly requires proactive silent refresh 5 minutes before expiry.
+
+**Ordering bug found only by running the real flow.** The first working version called
+`signInWithGoogle()` then `requestInitialToken()` — matching the issue's own narrative
+order (sign in, then get the Drive grant). Driving it against a live Firebase Auth
+Emulator popup (not the mocked unit-test suite, which can't reproduce this) surfaced a
+race: `main.js`'s `authApi.onChange` fires the instant the Firebase popup resolves, and
+immediately calls `store.setUser(user)` → `googleDriveAdapter.getMeta()` for a Google
+user — before `requestInitialToken()` (running independently in `signIn.js`'s own
+promise chain) had necessarily finished populating the in-memory token. `getMeta()` would
+throw "No Google Drive access token available." The fix was to flip the order:
+`signIn.js` now calls `requestInitialToken()` **first**, so a usable token is already in
+memory by the time the Firebase popup — and the `onChange` handler it triggers — can
+possibly resolve. If the Drive grant fails, `signInWithGoogle()` is never called (nothing
+to roll back); if identity sign-in fails after the Drive grant already succeeded,
+`signIn.js` calls `authApi.signOut()` so a user is never left signed in with
+`providerData` pointing at Drive but no usable token.
+
+**Token lifecycle**: the access token lives in a `googleDriveAuth.js`-module-scoped
+variable only (never `localStorage`/`sessionStorage`, per issue #5's token-security
+table). `GoogleDriveAdapter.request()` reads it via a **synchronous** `getAccessToken()`
+call (`const token = this.getAccessToken();`, not awaited), so refresh has to be
+proactive: a `setTimeout` scheduled for `expires_in - 300` seconds after every successful
+grant calls the same silent `requestAccessToken({ prompt: '' })`. A `401` (routed to
+`onTokenExpired`) or `main.js`'s `reacquireIfGoogleUser(user)` (called after every
+`store.setUser(user)`, covering a page reload restoring a persisted Firebase session)
+both fall back to one immediate silent-refresh attempt; if that also fails, a toast asks
+the user to sign in with Google again rather than the app trying to open an unsolicited
+popup (which the browser would block anyway, having no user gesture behind it).
+
+**Wiring without breaking the singleton.** `googleDriveAdapter` (§5.13) is a
+module-level singleton that `adapterFactory` tests assert by identity
+(`getStorageAdapter(googleUser) === googleDriveAdapter`). Rather than replace it,
+`GoogleDriveAdapter` gained one small method, `configure({ getAccessToken,
+onTokenExpired })`, that overwrites either hook on the existing instance.
+`googleDriveAuth.js` calls this once, as a module-load side effect — `main.js` imports
+`googleDriveAuth.js` (for `reacquireIfGoogleUser`), so the wiring is guaranteed to run at
+boot, before any sign-in can resolve, without a separate explicit call anywhere.
+
+**CSP, found empirically, not by inspection.** Three additions were needed beyond
+`https://accounts.google.com`: `script-src` needed `https://apis.google.com` (Firebase's
+popup sign-in loads Google's `gapi` client library for cross-window messaging,
+regardless of provider or whether the Auth Emulator is in use); `frame-src` needed both
+`https://accounts.google.com` (production) and, for local/CI emulator testing,
+`http://127.0.0.1:9099` (the popup-resolution relay iframe loads from whichever host is
+actually running the auth handler). Missing any of these doesn't throw a visible error —
+`signInWithPopup`'s promise just never resolves, which is why this was found by driving
+the real flow end-to-end rather than by reasoning about the CSP in isolation. The GIS
+script itself (loaded dynamically, not a static `<script>` tag) has no SRI hash — Google
+documents it as intentionally unversioned/uncacheable, a narrow, deliberate exception to
+the SRI-mandatory rule.
+
+**Scope**: only a brand-new Google sign-in gets Drive as its backend. Issue #5 §5's
+"Connect Google Drive" migration flow for an *existing* Firebase email/password account
+is explicitly out of scope for this PR and left to a follow-up issue — none of the
+issue's acceptance criteria require it, and it doesn't block the sign-in + sync path
+those criteria do cover.
+
+Cross-reference: `CLAUDE.md §Google Sign-In + Drive token handling`, `docs/api.md
+§googleDriveAuth.js`.
 
 ---
 
@@ -767,6 +843,15 @@ adapters`.
    CDN in production).
 5. Enable Firebase App Check before a public launch.
 6. Add `FIREBASE_CONFIG_TEST` and `FIREBASE_TOKEN` GitHub secrets to enable E2E CI.
+7. For Google Sign-In + Drive sync (issue #5 part 3): enable the Google sign-in provider
+   in Firebase Console → Authentication → Sign-in method (this auto-provisions an OAuth
+   client in the linked Google Cloud project); in Google Cloud Console, add that client's
+   Authorized JavaScript origins, enable the Google Drive API, and add the
+   `drive.appdata` scope on the OAuth consent screen. Add the resulting Client ID as
+   `googleClientId` in `src/services/firebase.config.js` (gitignored — see that file's
+   comment). PR preview URLs are ephemeral per-PR subdomains and can't be registered as
+   an origin in advance, so this flow is only testable on `localhost` or a fixed
+   prod/staging origin.
 
 **Future hardening:**
 - Move public seed roadmap content to versioned static JSON or a `roadmapTemplates/{version}` node.
@@ -1350,3 +1435,45 @@ Google-shaped users); two new cases in `tests/integration/roadmapStore.test.js`'
 "adapter reselection per sign-in" block (`setUser` calls `getStorageAdapter` with the
 signed-in user; a later sign-in as a different auth type actually switches which
 adapter's methods get called, not a stale one from the previous session).
+
+### 2026-07-07 — PR #TBD — Google Sign-In + real GIS token wiring (issue #5, part 3/3)
+
+Last of three PRs implementing issue #5. See §5.14 above for the full design — new
+`src/services/googleDriveAuth.js` (GIS token client: lazy script load, silent
+proactive-refresh timer, `requestInitialToken`/`getAccessToken`/`handleTokenExpired`/
+`reacquireIfGoogleUser`), a `configure()` method added to `GoogleDriveAdapter` so the
+existing `googleDriveAdapter` singleton can have its token hooks wired in post-
+construction, `authApi.signInWithGoogle()` (identity-only popup) added to `firebase.js`,
+and a "Sign in with Google" button + pre-consent `confirmDialog()` added to `signIn.js`.
+`googleDriveAdapter` (part 2) is reachable in production for the first time.
+
+The identity popup and the Drive-token grant are deliberately two separate steps, in a
+specific order (Drive grant first) — driving the real flow against a live Firebase Auth
+Emulator surfaced a race that no mocked unit test could have caught: `main.js`'s
+`onChange` handler calls `googleDriveAdapter.getMeta()` the instant Firebase's identity
+popup resolves, which needs a Drive token already in memory. See §5.14 for the full
+account of the bug and fix.
+
+CSP needed three more additions, also found only by running the real flow: `apis.google.com`
+in `script-src` (Firebase's own popup-sign-in machinery, not anything Drive-specific),
+and both `accounts.google.com` and `127.0.0.1:9099` (local/CI emulator) in `frame-src`.
+None of these fail loudly when missing — the sign-in popup just never resolves.
+
+**Explicitly out of scope**: issue #5 §5's "Connect Google Drive" flow for migrating an
+existing Firebase email/password account to Drive. Nothing in the issue's acceptance
+criteria requires it; a new Google sign-in gets Drive as its backend from first login,
+which is what's covered here.
+
+New tests: `tests/unit/services/googleDriveAuth.test.js` and
+`googleDriveAuthPlaceholder.test.js` (initial grant, GIS error → reject, unconfigured
+`googleClientId` → helpful error, scheduled silent refresh via fake timers, 401 → one
+retry → deduped reconnect toast, `reacquireIfGoogleUser` no-op vs. Google user); a new
+`configure()` describe block in `GoogleDriveAdapter.test.js`; a new "Google sign-in"
+describe block in `tests/unit/signIn.test.js` (pre-consent notice shown before the
+popup, cancel never signs in, success path, Drive-token failure rolls back via
+`signOut()`); new `tests/e2e/googleDriveSignin.test.js` (gated on `FIREBASE_CONFIGURED`,
+using the Auth Emulator's real fake-IDP popup plus a stubbed GIS token client and a
+mocked Drive REST API — verified against a live emulator while writing it, including the
+finding that a regex-pattern or single-catch-all `page.route()` can silently stall the
+popup's cross-window handshake in some environments; every Drive endpoint gets its own
+glob-pattern route instead).
