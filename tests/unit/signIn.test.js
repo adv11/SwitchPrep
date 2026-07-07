@@ -14,7 +14,7 @@ vi.mock('../../src/services/firebase.js', () => ({
 }));
 
 vi.mock('../../src/services/googleDriveAuth.js', () => ({
-  requestInitialToken: vi.fn(),
+  setInitialAccessToken: vi.fn(),
 }));
 
 vi.mock('../../src/ui/router.js', () => ({ navigate: vi.fn() }));
@@ -243,12 +243,11 @@ describe('sign-in page — Google sign-in', () => {
     expect(authApi.signInWithGoogle).not.toHaveBeenCalled();
   });
 
-  it('signs in with Google, requests a Drive token, and navigates on success', async () => {
+  it('signs in with Google, seeds the Drive token from the credential, and navigates on success', async () => {
     const { navigate } = await import('../../src/ui/router.js');
     const { authApi } = await import('../../src/services/firebase.js');
-    const { requestInitialToken } = await import('../../src/services/googleDriveAuth.js');
-    authApi.signInWithGoogle.mockResolvedValue({ user: { uid: 'g1' } });
-    requestInitialToken.mockResolvedValue('drive-token');
+    const { setInitialAccessToken } = await import('../../src/services/googleDriveAuth.js');
+    authApi.signInWithGoogle.mockResolvedValue({ user: { uid: 'g1' }, driveAccessToken: 'drive-token' });
 
     const { app } = await setup();
     const btn = [...app.querySelectorAll('button')].find(b => b.textContent === 'Sign in with Google');
@@ -258,17 +257,34 @@ describe('sign-in page — Google sign-in', () => {
     document.querySelector('.modal-overlay [data-action="confirm"]').click();
 
     await vi.waitFor(() => expect(authApi.signInWithGoogle).toHaveBeenCalled());
-    await vi.waitFor(() => expect(requestInitialToken).toHaveBeenCalled());
+    await vi.waitFor(() => expect(setInitialAccessToken).toHaveBeenCalledWith('drive-token'));
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/app', true));
     expect(authApi.signOut).not.toHaveBeenCalled();
   });
 
-  it('signs the user back out and shows an error if the Drive token request fails', async () => {
+  it('signs the user back out and shows an error if the credential has no Drive access token', async () => {
     const { authApi } = await import('../../src/services/firebase.js');
-    const { requestInitialToken } = await import('../../src/services/googleDriveAuth.js');
-    authApi.signInWithGoogle.mockResolvedValue({ user: { uid: 'g1' } });
+    authApi.signInWithGoogle.mockResolvedValue({ user: { uid: 'g1' }, driveAccessToken: null });
     authApi.signOut.mockResolvedValue();
-    requestInitialToken.mockRejectedValue(new Error('Drive access token expired'));
+    authApi.signOut.mockClear();
+
+    const { app } = await setup();
+    const btn = [...app.querySelectorAll('button')].find(b => b.textContent === 'Sign in with Google');
+    btn.click();
+
+    await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).not.toBeNull());
+    document.querySelector('.modal-overlay [data-action="confirm"]').click();
+
+    await vi.waitFor(() => expect(authApi.signOut).toHaveBeenCalled());
+    const msg = app.querySelector('.form-message');
+    expect(msg.classList.contains('error')).toBe(true);
+  });
+
+  it('signs the user back out and shows an error if signInWithGoogle itself rejects', async () => {
+    const { authApi } = await import('../../src/services/firebase.js');
+    authApi.signInWithGoogle.mockRejectedValue({ code: 'auth/popup-closed-by-user' });
+    authApi.signOut.mockResolvedValue();
+    authApi.signOut.mockClear();
 
     const { app } = await setup();
     const btn = [...app.querySelectorAll('button')].find(b => b.textContent === 'Sign in with Google');

@@ -40,6 +40,11 @@ if (typeof window !== 'undefined' && window.__USE_FIREBASE_EMULATOR__) {
 }
 export const firebaseClock = serverTimestamp;
 
+// Requested directly on the sign-in popup's own provider so a single popup
+// covers both identity and Drive access — see signInWithGoogle() below. Must
+// stay in sync with DRIVE_SCOPE in googleDriveAuth.js.
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+
 export const authApi = {
   onChange(callback) {
     return onAuthStateChanged(auth, callback);
@@ -59,16 +64,33 @@ export const authApi = {
   guest() {
     return signInAnonymously(auth);
   },
-  // Identity only — establishes `auth.currentUser.providerData` containing
-  // `{ providerId: 'google.com' }`, which is all `adapterFactory.js` needs to
-  // route this user to `googleDriveAdapter` (issue #5 part 3). Deliberately
-  // does NOT request the Drive scope here: the Drive-scoped access token is a
-  // separate grant obtained through `googleDriveAuth.js`'s own Google
-  // Identity Services token client, which (unlike this popup) can silently
-  // refresh without a visible re-prompt. Callers must request that token
-  // themselves right after this resolves — see signIn.js.
-  signInWithGoogle() {
-    return signInWithPopup(auth, new GoogleAuthProvider());
+  // Identity + Drive access in a single popup. This used to be two sequential
+  // popups — a GIS popup for the Drive scope, then this one for Firebase
+  // identity — but chaining two popups let the browser's user-gesture window
+  // lapse between them, so the second popup was frequently auto-closed by
+  // the browser (auth/popup-closed-by-user / auth/cancelled-popup-request)
+  // on a real click. Found by manual testing with a real Google account, not
+  // by the E2E suite: the Playwright tests stub GIS's token client as a
+  // synchronous fake that never opens a real popup, so they never exercised
+  // two real browser popups back to back.
+  //
+  // Adding the scope directly to this provider means the OAuth credential
+  // Firebase hands back already carries Drive access —
+  // GoogleAuthProvider.credentialFromResult(result).accessToken — so the
+  // caller (signIn.js) can hand that straight to
+  // googleDriveAuth.js's setInitialAccessToken() with no second popup.
+  // GIS's own token client (googleDriveAuth.js) is still used afterwards for
+  // silent background refresh, since this credential has no refresh
+  // mechanism of its own — that still works because Firebase's
+  // auto-created OAuth client for "Sign in with Google" and `googleClientId`
+  // (configured for GIS) are the same OAuth client, so consent granted here
+  // is visible to GIS's silent `prompt: ''` refresh later.
+  async signInWithGoogle() {
+    const provider = new GoogleAuthProvider();
+    provider.addScope(DRIVE_SCOPE);
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    return { user: result.user, driveAccessToken: credential?.accessToken || null };
   },
   signOut() {
     return signOut(auth);

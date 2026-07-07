@@ -1,7 +1,7 @@
 import { el } from '../dom.js';
 import { navigate } from '../router.js';
 import { authApi, authErrorMessage } from '../../services/firebase.js';
-import { requestInitialToken } from '../../services/googleDriveAuth.js';
+import { setInitialAccessToken } from '../../services/googleDriveAuth.js';
 import { showToast } from '../components/toast.js';
 import { authShell } from '../components/authShell.js';
 import { confirmDialog } from '../components/confirmDialog.js';
@@ -93,15 +93,17 @@ export function renderSignIn(app, { user }) {
       message.className = 'form-message';
       setBusy(true);
       try {
-        // Drive token first, deliberately: main.js's authApi.onChange fires
-        // as soon as the Firebase identity popup below resolves, and it
-        // immediately calls store.setUser(user) -> googleDriveAdapter.getMeta()
-        // — which needs a usable access token already in memory at that
-        // point. Getting the Drive grant first avoids that race entirely.
-        // Separate grant from the identity popup below — see
-        // googleDriveAuth.js's requestInitialToken() doc comment.
-        await requestInitialToken();
-        await authApi.signInWithGoogle();
+        // One popup does both identity and Drive consent (see firebase.js's
+        // signInWithGoogle()) — chaining two sequential popups let the
+        // browser's user-gesture window lapse between them and the second
+        // one was frequently auto-closed on a real click. Seed the token
+        // into googleDriveAuth.js immediately so a Google user's very next
+        // store.setUser() -> googleDriveAdapter.getMeta() call (triggered by
+        // main.js's authApi.onChange, which can fire as early as this same
+        // popup resolving) has a usable token in memory.
+        const { driveAccessToken } = await authApi.signInWithGoogle();
+        if (!driveAccessToken) throw new Error('Could not get Google Drive access. Please try again.');
+        setInitialAccessToken(driveAccessToken);
         showToast('Signed in with Google. Syncing your roadmap…', 'success');
         navigate('/app', true);
       } catch (error) {

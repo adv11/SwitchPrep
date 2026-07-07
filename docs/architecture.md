@@ -752,47 +752,69 @@ account that predates Google sign-in.
 Cross-reference: `CLAUDE.md §Storage adapter abstraction`, `docs/api.md §Storage
 adapters`.
 
-### 5.14 Real Google Sign-In + GIS token wiring (Issue #5, part 3 of 3)
+### 5.14 Real Google Sign-In + GIS token wiring (Issue #5, part 3 of 3; revised as an issue #5 follow-up)
 
 `googleDriveAdapter` (§5.13) is reachable in production now: `src/services/
 googleDriveAuth.js` supplies the real `getAccessToken`/`onTokenExpired` pair via
 `googleDriveAdapter.configure(...)`, and `src/ui/pages/signIn.js` adds the "Sign in with
 Google" button the issue's sign-in-screen mock calls for.
 
-**Two separate OAuth grants, not one.** `authApi.signInWithGoogle()` (`firebase.js`) is a
-plain `signInWithPopup(auth, new GoogleAuthProvider())` — identity only, no scopes beyond
-Firebase's defaults. It's what makes `user.providerData` contain `google.com`, which
-`adapterFactory`'s existing (§5.13) check already keyed off of — zero changes needed
-there. The Drive-scoped access token is a **separate** grant, obtained through a Google
-Identity Services (GIS) token client (`googleDriveAuth.js`, `scope:
-'https://www.googleapis.com/auth/drive.appdata'`) rather than through Firebase's own
-popup credential. This split exists because GIS's token client supports silent,
-no-popup refresh (`requestAccessToken({ prompt: '' })`) using the browser's existing
-Google session — Firebase's popup-obtained OAuth credential has no equivalent renewal
-path, and issue #5 explicitly requires proactive silent refresh 5 minutes before expiry.
+**One OAuth popup, not two (revised from the original two-popup design below).** The
+original part-3 design used two separate OAuth grants: `authApi.signInWithGoogle()`
+(`firebase.js`) was a plain `signInWithPopup(auth, new GoogleAuthProvider())` for identity
+only, and the Drive-scoped access token came from a separate Google Identity Services
+(GIS) token client popup (`googleDriveAuth.js`, `scope:
+'https://www.googleapis.com/auth/drive.appdata'`). **This was a real, reproducible bug**,
+found by manual testing with a real Google account (not by the E2E suite, which stubs GIS
+as a synchronous fake that never opens a real popup, so it never exercised two real
+browser popups back to back): chaining two full popup-with-human-interaction OAuth flows
+let the browser's user-gesture window lapse between them, so the second popup (Firebase's)
+was frequently auto-closed by the browser (`auth/popup-closed-by-user` /
+`auth/cancelled-popup-request`) on a real click. The fix adds the Drive scope directly to
+the same `GoogleAuthProvider` used for `signInWithPopup`, so Firebase's own OAuth
+credential already carries Drive access —
+`GoogleAuthProvider.credentialFromResult(result).accessToken` — and
+`signInWithGoogle()` returns `{ user, driveAccessToken }`. `signIn.js` passes
+`driveAccessToken` to a new `setInitialAccessToken(token)` in `googleDriveAuth.js`, which
+seeds the in-memory token and arms the same refresh timer a GIS grant would have. GIS's
+token client is kept, used only for silent background refresh from then on
+(`requestAccessToken({ prompt: '' })`) — this still works even though the initial grant
+didn't come from GIS, because enabling the Google sign-in provider in Firebase Console
+auto-creates exactly one OAuth client in the linked Google Cloud project, and
+`googleClientId`'s setup instructions have you copy that same client's ID: Firebase's
+popup and GIS's token client are the same OAuth client, so consent granted via one is
+visible to the other. `requestInitialToken()` (a GIS-only popup) is no longer called by
+the sign-in button but is kept for a future "Connect Google Drive" flow on an existing
+Firebase account, which has no Firebase popup to piggyback a scope onto.
 
-**Ordering bug found only by running the real flow.** The first working version called
-`signInWithGoogle()` then `requestInitialToken()` — matching the issue's own narrative
-order (sign in, then get the Drive grant). Driving it against a live Firebase Auth
-Emulator popup (not the mocked unit-test suite, which can't reproduce this) surfaced a
-race: `main.js`'s `authApi.onChange` fires the instant the Firebase popup resolves, and
-immediately calls `store.setUser(user)` → `googleDriveAdapter.getMeta()` for a Google
-user — before `requestInitialToken()` (running independently in `signIn.js`'s own
-promise chain) had necessarily finished populating the in-memory token. `getMeta()` would
-throw "No Google Drive access token available." The fix was to flip the order:
-`signIn.js` now calls `requestInitialToken()` **first**, so a usable token is already in
-memory by the time the Firebase popup — and the `onChange` handler it triggers — can
-possibly resolve. If the Drive grant fails, `signInWithGoogle()` is never called (nothing
-to roll back); if identity sign-in fails after the Drive grant already succeeded,
-`signIn.js` calls `authApi.signOut()` so a user is never left signed in with
-`providerData` pointing at Drive but no usable token.
+**Ordering bug, originally "fixed" by sequencing two popups — now accepted as a soft
+race instead.** The very first working version called `signInWithGoogle()` then
+`requestInitialToken()` and hit a race: `main.js`'s `authApi.onChange` fires the instant
+the Firebase popup resolves and immediately calls `store.setUser(user)` →
+`googleDriveAdapter.getMeta()` for a Google user, which needs a token already in memory
+or it throws. That version's fix was to flip the order (get the Drive grant first) — which
+is exactly the two-popup sequencing that caused the browser-popup-blocking bug above. The
+single-popup redesign can't preserve that ordering guarantee: `setInitialAccessToken()`
+only runs once `signIn.js`'s own continuation resumes after `signInWithGoogle()`
+resolves, and `onChange` can fire at essentially the same moment. Verified against a live
+Firebase Auth Emulator: `getMeta()`'s "No Google Drive access token available" throw is
+visible in the console on some runs. This is accepted rather than re-engineered around,
+because `roadmapStore.setUser`'s existing `try/catch` around `getMeta()` already treats a
+failed meta read as "fall back to local detection" — the same path a network hiccup would
+take — so the practical effect is a possible one-time degraded first paint that self-heals
+on the next Drive poll (focus/visibility) or reload, not a crash. If `signInWithGoogle()`
+resolves with no `driveAccessToken` or rejects outright, `signIn.js` calls
+`authApi.signOut()` so a user is never left signed in with `providerData` pointing at
+Drive but no usable token.
 
 **Token lifecycle**: the access token lives in a `googleDriveAuth.js`-module-scoped
 variable only (never `localStorage`/`sessionStorage`, per issue #5's token-security
 table). `GoogleDriveAdapter.request()` reads it via a **synchronous** `getAccessToken()`
 call (`const token = this.getAccessToken();`, not awaited), so refresh has to be
 proactive: a `setTimeout` scheduled for `expires_in - 300` seconds after every successful
-grant calls the same silent `requestAccessToken({ prompt: '' })`. A `401` (routed to
+grant calls the same silent `requestAccessToken({ prompt: '' })`. `setInitialAccessToken()`
+assumes the standard 1-hour lifetime when arming this timer, since Firebase's credential
+doesn't expose the token's real `expires_in` the way GIS's own response does. A `401` (routed to
 `onTokenExpired`) or `main.js`'s `reacquireIfGoogleUser(user)` (called after every
 `store.setUser(user)`, covering a page reload restoring a persisted Firebase session)
 both fall back to one immediate silent-refresh attempt; if that also fails, a toast asks
@@ -1477,3 +1499,43 @@ mocked Drive REST API — verified against a live emulator while writing it, inc
 finding that a regex-pattern or single-catch-all `page.route()` can silently stall the
 popup's cross-window handshake in some environments; every Drive endpoint gets its own
 glob-pattern route instead).
+
+### 2026-07-07 — PR #70 — Fix: "Sign in with Google" double-popup + CI env setup (issue #5 follow-up)
+
+Two independent fixes on the same branch, both found while investigating a real user
+report of Google Sign-In failing intermittently with "Sign-in was closed before
+finishing" and PR #70's CI going red.
+
+**Double-popup bug (see the revised §5.14 above for the full account).** The two-OAuth-
+grant design from part 3 — a GIS popup for Drive consent, then a separate Firebase popup
+for identity — let the browser's user-gesture window lapse between the two popups on a
+real click, so the second one was frequently auto-closed by the browser
+(`auth/popup-closed-by-user`/`auth/cancelled-popup-request`). The E2E suite never caught
+this because it stubs GIS as a synchronous fake that never opens a real popup — it only
+ever exercised one real browser popup, not two in sequence. Fixed by adding the Drive
+scope directly to the `GoogleAuthProvider` used for `signInWithPopup` (`firebase.js`) and
+pulling the Drive access token out of the resulting credential
+(`GoogleAuthProvider.credentialFromResult`), so one popup covers both grants. GIS's token
+client (`googleDriveAuth.js`) is now only used for silent background refresh via a new
+`setInitialAccessToken(token)` entry point. Verified against a live Firebase Auth
+Emulator: the "sign-in → pick template → toggle item → Drive file is updated" E2E test
+passes with a real Drive-scoped token obtained through the single popup. Also verified,
+via a temporary before/after A-B comparison against the same emulator, that an
+intermittent hang in that same E2E test (the fake-IDP popup occasionally not completing)
+is a pre-existing environmental flake unrelated to this change — it reproduces at a
+similar rate with or without the added scope.
+
+**CI: `test-unit` job never had a `firebase.config.js`.** Unlike the `test-e2e` job, the
+Vitest job's workflow steps never copied `firebase.config.example.js` into place, so any
+test file that imports `src/services/googleDriveAuth.js` — even ones that `vi.mock()`
+`firebase.config.js` — failed with "Failed to resolve import './firebase.config.js'":
+Vite's resolver needs the file to physically exist on disk before a mock can substitute
+its contents. `.github/workflows/ci.yml`'s `test-unit` job now copies the example config
+first. Separately, the `test-e2e` job's `FIREBASE_CONFIG_TEST` secret predates this
+feature and doesn't have a `googleClientId` export — since `main.js` imports
+`googleDriveAuth.js` unconditionally at boot and this app has no bundler (native ES
+modules in the browser), a real ES module import of a named export that doesn't exist is
+a hard link-time error that broke the *entire* module graph, which is why every E2E test
+was failing, not just the Google ones. That secret needs a manual update (outside this
+repo) to add the export; the one E2E test that exercises Google sign-in already stubs
+`googleClientId` itself via `page.route()`, unaffected either way.

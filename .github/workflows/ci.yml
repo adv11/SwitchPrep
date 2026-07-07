@@ -46,6 +46,13 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
+      - name: Write placeholder Firebase config
+        # firebase.config.js is gitignored (never committed) and unit tests
+        # individually vi.mock() its contents anyway — but Vite's resolver
+        # still needs the file to physically exist to resolve imports of it
+        # (e.g. src/services/googleDriveAuth.js) before the mock substitutes
+        # its content. The real values don't matter for unit tests.
+        run: cp src/services/firebase.config.example.js src/services/firebase.config.js
       - run: npm test
       - name: Upload coverage
         uses: actions/upload-artifact@v4

@@ -4,10 +4,14 @@ import { isGoogleUser } from './storage/adapterFactory.js';
 import { showToast } from '../ui/components/toast.js';
 
 // Google Identity Services (GIS) token client wiring for GoogleDriveAdapter
-// (issue #5 part 3). This is deliberately a separate grant from
-// authApi.signInWithGoogle()'s Firebase identity popup (see firebase.js) —
-// GIS's token client is what makes silent, no-popup refresh possible, which
-// Firebase's own popup credential does not support.
+// (issue #5 part 3). The normal "Sign in with Google" flow gets its first
+// Drive access token from authApi.signInWithGoogle()'s own OAuth credential
+// (see firebase.js and setInitialAccessToken() below) — one popup for both
+// identity and Drive consent. GIS's token client is used from then on for
+// silent, no-popup refresh, which Firebase's own popup credential does not
+// support; requestInitialToken() (a separate GIS popup) is kept only for a
+// future "Connect Google Drive" flow that has no Firebase popup to piggyback
+// a scope onto.
 //
 // The access token lives in a module-scoped variable ONLY — never
 // localStorage/sessionStorage (issue #5's non-negotiable token security
@@ -107,18 +111,30 @@ async function silentRefresh() {
   }
 }
 
-// Called BEFORE authApi.signInWithGoogle() (see signIn.js) — deliberately
-// first, not after: main.js's authApi.onChange fires as soon as the Firebase
-// identity popup resolves and immediately calls store.setUser(user), which
-// (for a Google user) calls googleDriveAdapter.getMeta() — that needs a
-// usable access token already in memory, or it rejects. Getting this grant
-// first avoids that race entirely. Shows GIS's own popup/consent for the
-// Drive scope — a separate popup from the Firebase identity one. Rejects if
-// the user closes it or consent is denied; the caller (signIn.js) never
-// calls signInWithGoogle() at all in that case, so there's nothing to roll
-// back.
+// Opens GIS's own popup/consent screen for the Drive scope, independent of
+// any Firebase identity flow. Not used by the normal "Sign in with Google"
+// button anymore (see setInitialAccessToken() below) — kept for a future
+// "Connect Google Drive" flow on an existing Firebase email/password
+// account (CLAUDE.md's documented out-of-scope follow-up), where there's no
+// signInWithGoogle() popup to piggyback a scope onto. Rejects if the user
+// closes it or consent is denied.
 export function requestInitialToken() {
   return requestToken({});
+}
+
+// Seeds this module's in-memory token from the OAuth credential
+// authApi.signInWithGoogle() already returns (see firebase.js) — the normal
+// sign-in path now gets identity and Drive access from one popup instead of
+// requesting a separate GIS grant first. Schedules the same silent-refresh
+// timer requestInitialToken() would have armed. Firebase's credential
+// doesn't expose the token's real expires_in, so this assumes the standard
+// 1-hour lifetime (matching requestToken's own `|| 3600` fallback) —
+// REFRESH_MARGIN_SECONDS' 5-minute-early margin comfortably absorbs this
+// being off by a couple of minutes either way.
+export function setInitialAccessToken(token) {
+  accessToken = token;
+  reconnectNoticeShown = false;
+  scheduleRefresh(3600);
 }
 
 // Synchronous by design — GoogleDriveAdapter.request() reads this

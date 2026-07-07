@@ -140,6 +140,33 @@ describe('googleDriveAuth — handleTokenExpired (401 handling)', () => {
   });
 });
 
+describe('googleDriveAuth — setInitialAccessToken', () => {
+  it('seeds the token from a credential (e.g. from signInWithGoogle) with no GIS popup', async () => {
+    const { requestAccessToken } = installFakeGis();
+    const mod = await loadModule();
+
+    mod.setInitialAccessToken('tok-from-firebase-credential');
+
+    expect(mod.getAccessToken()).toBe('tok-from-firebase-credential');
+    expect(requestAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('arms the same silent-refresh timer requestInitialToken() would have', async () => {
+    const { initTokenClient, requestAccessToken } = installFakeGis();
+    const mod = await loadModule();
+
+    mod.setInitialAccessToken('tok-1');
+
+    requestAccessToken.mockImplementationOnce(() => {
+      getCallback(initTokenClient)({ access_token: 'tok-2', expires_in: 3600 });
+    });
+    await vi.advanceTimersByTimeAsync((3600 - 300) * 1000);
+
+    expect(requestAccessToken).toHaveBeenCalledWith({ prompt: '' });
+    expect(mod.getAccessToken()).toBe('tok-2');
+  });
+});
+
 describe('googleDriveAuth — reacquireIfGoogleUser', () => {
   it('is a no-op for a non-Google user', async () => {
     const { requestAccessToken } = installFakeGis();
