@@ -1,0 +1,147 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('../../src/services/firebase.js', () => ({
+  authApi: {
+    deleteAccount: vi.fn(),
+  },
+  authErrorMessage: e => e?.message || 'error',
+}));
+
+vi.mock('../../src/ui/router.js', () => ({ navigate: vi.fn() }));
+
+beforeEach(() => {
+  vi.resetModules();
+  document.body.innerHTML = '';
+});
+
+// renderFilterChips/renderPhaseCard/showDeleteModal were extracted to
+// module scope out of renderDashboard's closures (issue #53) specifically so
+// they're independently testable — see the extraction comments in
+// src/ui/pages/dashboard.js.
+describe('renderFilterChips (issue #53)', () => {
+  async function build(items, activeFilter, onFilterChange) {
+    const { renderFilterChips } = await import('../../src/ui/pages/dashboard.js');
+    return renderFilterChips(items, activeFilter, onFilterChange);
+  }
+
+  const items = [
+    { priority: 'P0', done: true },
+    { priority: 'P0', done: false },
+    { priority: 'P1', done: false },
+  ];
+
+  it('renders one chip per priority plus "All", with correct done/total counts', async () => {
+    const chips = await build(items, 'ALL', () => {});
+    expect(chips).toHaveLength(5);
+    const p0 = chips.find(c => c.dataset.p === 'P0');
+    expect(p0.querySelector('.chip-count').textContent).toBe('1/2');
+    const all = chips.find(c => c.dataset.p === 'ALL');
+    expect(all.querySelector('.chip-count').textContent).toBe('1/3');
+  });
+
+  it('marks the active filter chip', async () => {
+    const chips = await build(items, 'P0', () => {});
+    const p0 = chips.find(c => c.dataset.p === 'P0');
+    expect(p0.classList.contains('active')).toBe(true);
+    expect(p0.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('calls onFilterChange with the clicked priority', async () => {
+    const onFilterChange = vi.fn();
+    const chips = await build(items, 'ALL', onFilterChange);
+    chips.find(c => c.dataset.p === 'P1').click();
+    expect(onFilterChange).toHaveBeenCalledWith('P1');
+  });
+});
+
+describe('renderPhaseCard (issue #53)', () => {
+  async function build(phase, pi, overrides = {}) {
+    const { renderPhaseCard } = await import('../../src/ui/pages/dashboard.js');
+    return renderPhaseCard(phase, pi, {
+      openPhases: new Set(),
+      filteredIds: new Set(phase.sections.flatMap(s => s.items.map(i => i.id))),
+      isCustomRoadmap: false,
+      onToggle: () => {},
+      onAddSection: () => {},
+      renderItemRow: item => document.createElement('div').appendChild(document.createTextNode(item.id)).parentElement,
+      renderAddRow: () => document.createElement('div'),
+      renderPhaseManageRow: () => document.createElement('div'),
+      renderSectionManageRow: () => document.createElement('div'),
+      renderInlineCreate: () => document.createElement('div'),
+      ...overrides
+    });
+  }
+
+  const phase = {
+    title: 'Phase One',
+    priority: 'P1',
+    sections: [{ title: 'Section A', items: [{ id: 'a', done: true }, { id: 'b', done: false }] }]
+  };
+
+  it('renders a phase-card section with the phase title and progress', async () => {
+    const card = await build(phase, 0);
+    expect(card).not.toBeNull();
+    expect(card.tagName).toBe('SECTION');
+    expect(card.querySelector('.phase-name').textContent).toBe('Phase One');
+    expect(card.querySelector('.phase-progress').textContent).toBe('1/2');
+  });
+
+  it('marks the card open when its index is in openPhases', async () => {
+    const card = await build(phase, 2, { openPhases: new Set([2]) });
+    expect(card.classList.contains('open')).toBe(true);
+  });
+
+  it('calls onToggle with the phase index when the head is clicked', async () => {
+    const onToggle = vi.fn();
+    const card = await build(phase, 3, { onToggle });
+    card.querySelector('.phase-head').click();
+    expect(onToggle).toHaveBeenCalledWith(3);
+  });
+
+  it('returns null when every section is hidden by the current filter', async () => {
+    const card = await build(phase, 0, { filteredIds: new Set() });
+    expect(card).toBeNull();
+  });
+
+  it('still renders a phase with zero sections (e.g. a freshly added custom phase)', async () => {
+    const emptyPhase = { title: 'New Phase', priority: 'P2', sections: [] };
+    const card = await build(emptyPhase, 0, { filteredIds: new Set() });
+    expect(card).not.toBeNull();
+  });
+});
+
+describe('showDeleteModal (issue #53)', () => {
+  it('renders a delete-account modal overlay attached to document.body', async () => {
+    const { showDeleteModal } = await import('../../src/ui/pages/dashboard.js');
+    showDeleteModal();
+    const overlay = document.querySelector('.modal-overlay[aria-label="Delete account"]');
+    expect(overlay).not.toBeNull();
+    expect(overlay.querySelector('input[type="password"]')).not.toBeNull();
+  });
+
+  it('shows a validation message when submitting without a password', async () => {
+    const { showDeleteModal } = await import('../../src/ui/pages/dashboard.js');
+    showDeleteModal();
+    document.querySelector('.modal-overlay form').requestSubmit();
+    const msg = document.querySelector('.form-message');
+    expect(msg.textContent).toBe('Enter your password to confirm.');
+  });
+
+  it('calls authApi.deleteAccount with the entered password on submit', async () => {
+    const { authApi } = await import('../../src/services/firebase.js');
+    authApi.deleteAccount.mockResolvedValue();
+    const { showDeleteModal } = await import('../../src/ui/pages/dashboard.js');
+    showDeleteModal();
+    document.querySelector('.modal-overlay input[type="password"]').value = 'secret123';
+    document.querySelector('.modal-overlay form').requestSubmit();
+    await vi.waitFor(() => expect(authApi.deleteAccount).toHaveBeenCalledWith('secret123'));
+  });
+
+  it('cancel button removes the overlay', async () => {
+    const { showDeleteModal } = await import('../../src/ui/pages/dashboard.js');
+    showDeleteModal();
+    const cancelBtn = [...document.querySelectorAll('.modal-overlay button')].find(b => b.textContent === 'Cancel');
+    cancelBtn.click();
+    expect(document.querySelector('.modal-overlay')).toBeNull();
+  });
+});

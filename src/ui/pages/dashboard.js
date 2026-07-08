@@ -8,6 +8,7 @@ import { createVerificationBanner } from '../components/verificationBanner.js';
 import { createBrandMark } from '../components/brand.js';
 import { confirmDialog } from '../components/confirmDialog.js';
 import { getTemplate } from '../../data/templates/index.js';
+import { MAX_TITLE_LENGTH } from '../../core/roadmap/limits.js';
 
 // `templatePhases` is the current user's chosen template's phase/section skeleton
 // (store.getSnapshot().phases) rather than a hardcoded import, so a template with
@@ -64,6 +65,159 @@ function filterItems(items, { priority, query }) {
 function priorityCounts(items, priority) {
   const list = priority === 'ALL' ? items : items.filter(i => i.priority === priority);
   return { total: list.length, done: list.filter(i => i.done).length };
+}
+
+// Module-scope (issue #53) — was previously inlined inside render(). Returns
+// the priority filter-chip buttons; onFilterChange receives the clicked
+// priority id and the caller owns re-rendering/persisting the new filter.
+export function renderFilterChips(items, activeFilter, onFilterChange) {
+  return ['ALL', 'P0', 'P1', 'P2', 'P3'].map(p => {
+    const { total, done } = priorityCounts(items, p);
+    const label = p === 'ALL' ? 'All' : p;
+    return el('button', {
+      type: 'button',
+      className: `filter-chip ${activeFilter === p ? 'active' : ''}`,
+      dataset: { p },
+      'aria-pressed': String(activeFilter === p),
+      onClick: () => onFilterChange(p)
+    }, [`${label} `, el('span', { className: 'chip-count', text: `${done}/${total}` })]);
+  });
+}
+
+// Module-scope (issue #53) — was previously a ~50-line anonymous forEach body
+// inline inside render(). Returns null when every section under this phase is
+// hidden by the current filter/search, so the caller can skip rendering (and
+// counting) it entirely.
+export function renderPhaseCard(phase, pi, {
+  openPhases,
+  filteredIds,
+  isCustomRoadmap,
+  onToggle,
+  onAddSection,
+  renderItemRow,
+  renderAddRow,
+  renderPhaseManageRow,
+  renderSectionManageRow,
+  renderInlineCreate
+}) {
+  // A section that has no topics at all (e.g. the "blank" template's empty
+  // phases) always stays visible — only a section that HAS topics but none
+  // matching the current filter/search gets hidden.
+  const visibleSections = phase.sections.map(section => ({
+    ...section,
+    items: section.items.filter(i => filteredIds.has(i.id))
+  })).filter((section, sIdx) => phase.sections[sIdx].items.length === 0 || section.items.length > 0);
+
+  // A custom roadmap's freshly-added phase (issue #4) starts with zero
+  // sections — without this, it would never render at all, leaving no way to
+  // reach the "+ Add section" control inside its phase-body.
+  if (!visibleSections.length && phase.sections.length > 0) return null;
+
+  const sectionDone = visibleSections.reduce((acc, s) => acc + s.items.filter(i => i.done).length, 0);
+  const sectionTotal = visibleSections.reduce((acc, s) => acc + s.items.length, 0);
+  const isOpen = openPhases.has(pi);
+
+  return el('section', { className: `phase-card ${isOpen ? 'open' : ''}`, dataset: { phase: String(pi) } }, [
+    el('button', {
+      type: 'button',
+      className: 'phase-head',
+      onClick: () => onToggle(pi)
+    }, [
+      el('span', { className: 'phase-index', text: String(pi + 1).padStart(2, '0') }),
+      el('span', { className: 'phase-name', text: phase.title }),
+      el('span', { className: `badge ${phase.priority}`, text: phase.priority }),
+      el('span', { className: 'phase-progress', text: `${sectionDone}/${sectionTotal}` }),
+      el('span', { className: 'chevron', text: '›' })
+    ]),
+    el('div', { className: 'phase-body' }, [
+      (isCustomRoadmap && phase.id) ? renderPhaseManageRow(phase) : null,
+      ...visibleSections.flatMap(section => [
+        (isCustomRoadmap && phase.id)
+          ? renderSectionManageRow(phase, section)
+          : (section.title ? el('div', { className: 'section-label', text: section.title }) : null),
+        ...section.items.map(renderItemRow),
+        renderAddRow(phase, section)
+      ]),
+      (isCustomRoadmap && phase.id) ? renderInlineCreate('New section name…', '+ Add section', title => onAddSection(phase.id, title)) : null
+    ].filter(Boolean))
+  ]);
+}
+
+// Module-scope (issue #53) — previously an ~75-line closure embedded inside
+// renderDashboard, bloating it despite being logically independent of the
+// dashboard's reactive state (it only touches authApi/navigation/toast, all
+// already module-level imports). Moving it out makes renderDashboard shorter
+// and this modal independently testable/navigable.
+export function showDeleteModal() {
+  const message = el('p', { className: 'form-message', text: '' });
+  const passwordInput = el('input', {
+    className: 'field-input',
+    type: 'password',
+    placeholder: 'Your current password',
+    autocomplete: 'current-password'
+  });
+  const confirmBtn = el('button', {
+    type: 'submit',
+    className: 'btn btn-danger btn-block',
+    text: 'Delete my account'
+  });
+  const cancelBtn = el('button', {
+    type: 'button',
+    className: 'btn btn-secondary btn-block',
+    text: 'Cancel'
+  });
+
+  function setBusy(busy) {
+    confirmBtn.disabled = busy;
+    cancelBtn.disabled = busy;
+  }
+
+  async function handleDelete(e) {
+    e.preventDefault();
+    message.textContent = '';
+    message.className = 'form-message';
+    const pass = passwordInput.value;
+    if (!pass) {
+      message.textContent = 'Enter your password to confirm.';
+      message.className = 'form-message error';
+      return;
+    }
+    setBusy(true);
+    try {
+      await authApi.deleteAccount(pass);
+      overlay.remove();
+      showToast('Account deleted.', 'success');
+      navigate('/signin', true);
+    } catch (err) {
+      message.textContent = authErrorMessage(err);
+      message.className = 'form-message error';
+      setBusy(false);
+    }
+  }
+
+  const form = el('form', { className: 'auth-form', onSubmit: handleDelete }, [
+    el('p', { className: 'delete-modal-body', text: 'This permanently deletes your account and all roadmap data. Enter your password to confirm.' }),
+    el('label', { className: 'field' }, [
+      el('span', { className: 'field-label', text: 'Password' }),
+      passwordInput
+    ]),
+    message,
+    confirmBtn,
+    cancelBtn
+  ]);
+
+  const overlay = el('div', { className: 'modal-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Delete account' }, [
+    el('div', { className: 'modal-card' }, [
+      el('h2', { className: 'modal-title', text: 'Delete account' }),
+      form
+    ])
+  ]);
+
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  document.body.appendChild(overlay);
+  passwordInput.focus();
 }
 
 export function renderDashboard(app, { user, store }) {
@@ -233,9 +387,13 @@ export function renderDashboard(app, { user, store }) {
         onClick: () => {
           const title = input.value.trim();
           if (!title) return;
+          if (title.length > MAX_TITLE_LENGTH) {
+            showToast(`Topic title must be ${MAX_TITLE_LENGTH} characters or fewer`, 'error');
+            return;
+          }
           const added = store.addItem({ title, phase: phase.title, section: section.title, priority: phase.priority });
           if (!added) {
-            showToast('This roadmap has reached its 1,000-topic limit', 'error');
+            showToast('This roadmap has reached its 800-topic limit', 'error');
             return;
           }
           input.value = '';
@@ -349,20 +507,10 @@ export function renderDashboard(app, { user, store }) {
     progressFill.style.width = `${stats.pct}%`;
     updateSaveBadge(snapshot.saveState);
 
-    filterContainer.replaceChildren(...['ALL', 'P0', 'P1', 'P2', 'P3'].map(p => {
-      const { total, done } = priorityCounts(allItems, p);
-      const label = p === 'ALL' ? 'All' : p;
-      return el('button', {
-        type: 'button',
-        className: `filter-chip ${activeFilter === p ? 'active' : ''}`,
-        dataset: { p },
-        'aria-pressed': String(activeFilter === p),
-        onClick: () => {
-          activeFilter = activeFilter === p && p !== 'ALL' ? 'ALL' : p;
-          persistUi();
-          render(store.getSnapshot());
-        }
-      }, [`${label} `, el('span', { className: 'chip-count', text: `${done}/${total}` })]);
+    filterContainer.replaceChildren(...renderFilterChips(allItems, activeFilter, p => {
+      activeFilter = activeFilter === p && p !== 'ALL' ? 'ALL' : p;
+      persistUi();
+      render(store.getSnapshot());
     }));
 
     const filteredIds = new Set(filtered.map(i => i.id));
@@ -380,55 +528,25 @@ export function renderDashboard(app, { user, store }) {
 
     let visibleCount = 0;
     phases.forEach((phase, pi) => {
-      // A section that has no topics at all (e.g. the "blank" template's empty
-      // phases) always stays visible — only a section that HAS topics but none
-      // matching the current filter/search gets hidden.
-      const visibleSections = phase.sections.map(section => ({
-        ...section,
-        items: section.items.filter(i => filteredIds.has(i.id))
-      })).filter((section, sIdx) => phase.sections[sIdx].items.length === 0 || section.items.length > 0);
-
-      // A custom roadmap's freshly-added phase (issue #4) starts with zero
-      // sections — without this, it would never render at all, leaving no
-      // way to reach the "+ Add section" control inside its phase-body.
-      if (!visibleSections.length && phase.sections.length > 0) return;
+      const phaseEl = renderPhaseCard(phase, pi, {
+        openPhases,
+        filteredIds,
+        isCustomRoadmap,
+        onToggle: targetPi => {
+          if (openPhases.has(targetPi)) openPhases.delete(targetPi);
+          else openPhases.add(targetPi);
+          persistUi();
+          render(store.getSnapshot());
+        },
+        onAddSection: (phaseId, title) => store.addSection(phaseId, title),
+        renderItemRow,
+        renderAddRow,
+        renderPhaseManageRow,
+        renderSectionManageRow,
+        renderInlineCreate
+      });
+      if (!phaseEl) return;
       visibleCount += 1;
-
-      const sectionDone = visibleSections.reduce((acc, s) => acc + s.items.filter(i => i.done).length, 0);
-      const sectionTotal = visibleSections.reduce((acc, s) => acc + s.items.length, 0);
-      const isOpen = openPhases.has(pi);
-
-      const phaseEl = el('section', { className: `phase-card ${isOpen ? 'open' : ''}`, dataset: { phase: String(pi) } }, [
-        el('button', {
-          type: 'button',
-          className: 'phase-head',
-          onClick: () => {
-            if (openPhases.has(pi)) openPhases.delete(pi);
-            else openPhases.add(pi);
-            persistUi();
-            render(store.getSnapshot());
-          }
-        }, [
-          el('span', { className: 'phase-index', text: String(pi + 1).padStart(2, '0') }),
-          el('span', { className: 'phase-name', text: phase.title }),
-          el('span', { className: `badge ${phase.priority}`, text: phase.priority }),
-          el('span', { className: 'phase-progress', text: `${sectionDone}/${sectionTotal}` }),
-          el('span', { className: 'chevron', text: '›' })
-        ]),
-        el('div', { className: 'phase-body' }, [
-          (isCustomRoadmap && phase.id) ? renderPhaseManageRow(phase) : null,
-          ...visibleSections.flatMap(section => [
-            (isCustomRoadmap && phase.id)
-              ? renderSectionManageRow(phase, section)
-              : (section.title ? el('div', { className: 'section-label', text: section.title }) : null),
-            ...section.items.map(renderItemRow),
-            renderAddRow(phase, section)
-          ]),
-          (isCustomRoadmap && phase.id) ? renderInlineCreate('New section name…', '+ Add section', title => {
-            store.addSection(phase.id, title);
-          }) : null
-        ].filter(Boolean))
-      ]);
       content.append(phaseEl);
     });
 
@@ -512,78 +630,6 @@ export function renderDashboard(app, { user, store }) {
     persistUi();
     render(store.getSnapshot());
   }, 160));
-
-  function showDeleteModal() {
-    const message = el('p', { className: 'form-message', text: '' });
-    const passwordInput = el('input', {
-      className: 'field-input',
-      type: 'password',
-      placeholder: 'Your current password',
-      autocomplete: 'current-password'
-    });
-    const confirmBtn = el('button', {
-      type: 'submit',
-      className: 'btn btn-danger btn-block',
-      text: 'Delete my account'
-    });
-    const cancelBtn = el('button', {
-      type: 'button',
-      className: 'btn btn-secondary btn-block',
-      text: 'Cancel'
-    });
-
-    function setBusy(busy) {
-      confirmBtn.disabled = busy;
-      cancelBtn.disabled = busy;
-    }
-
-    async function handleDelete(e) {
-      e.preventDefault();
-      message.textContent = '';
-      message.className = 'form-message';
-      const pass = passwordInput.value;
-      if (!pass) {
-        message.textContent = 'Enter your password to confirm.';
-        message.className = 'form-message error';
-        return;
-      }
-      setBusy(true);
-      try {
-        await authApi.deleteAccount(pass);
-        overlay.remove();
-        showToast('Account deleted.', 'success');
-        navigate('/signin', true);
-      } catch (err) {
-        message.textContent = authErrorMessage(err);
-        message.className = 'form-message error';
-        setBusy(false);
-      }
-    }
-
-    const form = el('form', { className: 'auth-form', onSubmit: handleDelete }, [
-      el('p', { className: 'delete-modal-body', text: 'This permanently deletes your account and all roadmap data. Enter your password to confirm.' }),
-      el('label', { className: 'field' }, [
-        el('span', { className: 'field-label', text: 'Password' }),
-        passwordInput
-      ]),
-      message,
-      confirmBtn,
-      cancelBtn
-    ]);
-
-    const overlay = el('div', { className: 'modal-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Delete account' }, [
-      el('div', { className: 'modal-card' }, [
-        el('h2', { className: 'modal-title', text: 'Delete account' }),
-        form
-      ])
-    ]);
-
-    cancelBtn.addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-
-    document.body.appendChild(overlay);
-    passwordInput.focus();
-  }
 
   const themeToggleBtn = createThemeToggle();
   const verificationBanner = createVerificationBanner(user);

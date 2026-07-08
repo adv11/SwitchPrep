@@ -1,5 +1,6 @@
 import { el, isValidUrl } from '../dom.js';
 import { confirmDialog } from './confirmDialog.js';
+import { MAX_TITLE_LENGTH, MAX_RESOURCE_LABEL_LENGTH, MAX_RESOURCE_URL_LENGTH } from '../../core/roadmap/limits.js';
 
 // Issue #15 — plain-string notes field, capped at 5000 chars (enforced both
 // here via the textarea's native maxlength and in roadmapStore/schema docs).
@@ -132,6 +133,14 @@ export function openItemPanel({ item, onSave, onDelete, onClose, focusField }) {
       formError.textContent = 'Enter a valid http or https URL.';
       return;
     }
+    if (label.length > MAX_RESOURCE_LABEL_LENGTH) {
+      formError.textContent = `Resource label must be ${MAX_RESOURCE_LABEL_LENGTH} characters or fewer.`;
+      return;
+    }
+    if (url.length > MAX_RESOURCE_URL_LENGTH) {
+      formError.textContent = `Resource URL must be ${MAX_RESOURCE_URL_LENGTH} characters or fewer.`;
+      return;
+    }
     resources.push({ label, url });
     labelInput.value = '';
     urlInput.value = '';
@@ -203,12 +212,21 @@ export function openItemPanel({ item, onSave, onDelete, onClose, focusField }) {
               formError.textContent = 'Title cannot be empty.';
               return;
             }
+            if (title.length > MAX_TITLE_LENGTH) {
+              formError.textContent = `Title must be ${MAX_TITLE_LENGTH} characters or fewer.`;
+              return;
+            }
             const cleanResources = resources
               .map(r => ({ label: r.label.trim(), url: r.url.trim() }))
               .filter(r => r.label && r.url);
             const badUrl = cleanResources.find(r => !isValidUrl(r.url));
             if (badUrl) {
               formError.textContent = 'One or more resource URLs must be a valid http or https URL.';
+              return;
+            }
+            const badLength = cleanResources.find(r => r.label.length > MAX_RESOURCE_LABEL_LENGTH || r.url.length > MAX_RESOURCE_URL_LENGTH);
+            if (badLength) {
+              formError.textContent = `Resource labels must be ${MAX_RESOURCE_LABEL_LENGTH} characters or fewer and URLs ${MAX_RESOURCE_URL_LENGTH} or fewer.`;
               return;
             }
             clearTimeout(notesSaveTimer);

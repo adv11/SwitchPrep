@@ -26,6 +26,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js';
 import { firebaseConfig } from './firebase.config.js';
 import { signOutWithCleanup } from './authCleanup.js';
+import { assertAccountDeletable } from './accountGuards.js';
 
 const app = initializeApp(firebaseConfig);
 
@@ -85,6 +86,7 @@ export const authApi = {
   },
   async deleteAccount(password) {
     const user = auth.currentUser;
+    assertAccountDeletable(user);
     const cred = EmailAuthProvider.credential(user.email, password);
     await reauthenticateWithCredential(user, cred);
     // Delete DB data before Auth record to avoid orphaned data
