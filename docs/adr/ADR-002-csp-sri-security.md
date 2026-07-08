@@ -69,7 +69,7 @@ CSP directives chosen:
 | `style-src` | `'self' https://fonts.googleapis.com` | Google Fonts CSS |
 | `font-src` | `https://fonts.gstatic.com` | Google Fonts font files |
 | `connect-src` | `https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com https://www.googleapis.com https://oauth2.googleapis.com http://127.0.0.1:9099 http://127.0.0.1:9000 ws://127.0.0.1:9000` | Firebase Realtime Database (HTTPS + WebSocket), Auth REST, token refresh, the Google Drive REST API + GIS token endpoint (issue #5 parts 2–3), plus the local Auth/Database emulator ports used by `FIREBASE_CONFIGURED=true` E2E runs (`connectAuthEmulator`/`connectDatabaseEmulator` in `firebase.js`) |
-| `frame-src` | `https://accounts.google.com http://127.0.0.1:9099` | The popup-sign-in cross-window relay iframe Firebase's Auth SDK loads, from whichever host is actually running the auth handler — production Google, or (local/CI only) the Auth Emulator |
+| `frame-src` | `https://accounts.google.com https://*.firebaseapp.com http://127.0.0.1:9099` | The popup-sign-in cross-window relay iframe Firebase's Auth SDK loads. `accounts.google.com` is the OAuth consent screen itself; `*.firebaseapp.com` is Firebase's own `<authDomain>/__/auth/iframe` relay the SDK uses to receive the popup's result back — without it, `signInWithPopup()` silently fails with `auth/popup-closed-by-user` right after the user finishes Google's consent screen, since the relay iframe never loads. `127.0.0.1:9099` is the local Auth Emulator, for local/CI only |
 | `img-src` | `'self' data:` | Allows inline SVG data URIs (used by favicon/icons) |
 | `frame-ancestors` | `'none'` | Belt-and-suspenders with X-Frame-Options: DENY |
 

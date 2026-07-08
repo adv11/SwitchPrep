@@ -1502,7 +1502,7 @@ glob-pattern route instead).
 
 ### 2026-07-07 — PR #70 — Fix: "Sign in with Google" double-popup + CI env setup (issue #5 follow-up)
 
-Two independent fixes on the same branch, both found while investigating a real user
+Three independent fixes on the same branch, all found while investigating a real user
 report of Google Sign-In failing intermittently with "Sign-in was closed before
 finishing" and PR #70's CI going red.
 
@@ -1539,3 +1539,28 @@ a hard link-time error that broke the *entire* module graph, which is why every 
 was failing, not just the Google ones. That secret needs a manual update (outside this
 repo) to add the export; the one E2E test that exercises Google sign-in already stubs
 `googleClientId` itself via `page.route()`, unaffected either way.
+
+**CSP was silently blocking the popup's own relay iframe — invisible to the emulator-based
+E2E suite.** After the double-popup fix above, `auth/popup-closed-by-user` still reproduced
+on a real, non-emulator sign-in attempt: a real Google account, real `accounts.google.com`
+account-picker and Drive-consent screens, all completed successfully, then the popup failed
+right as it should have resolved. Root cause: `signInWithPopup()` doesn't only open the
+account-picker popup — it also loads a hidden iframe at `<authDomain>/__/auth/iframe` (the
+production Firebase Hosting authDomain, not the emulator) to relay the popup's result back
+to the opener. `index.html`'s CSP `frame-src` allowed `accounts.google.com` and the local
+Auth Emulator (`127.0.0.1:9099`) but never `*.firebaseapp.com`, so the browser silently
+blocked that relay iframe — no visible error, just a CSP console violation — and Firebase's
+popup-tracking logic eventually gave up and reported it as `auth/popup-closed-by-user`,
+indistinguishable from the user actually closing it. The double-popup fix's own E2E
+verification never caught this because the Auth Emulator's popup flow runs entirely against
+`127.0.0.1:9099`, which was already allow-listed — the gap only exists for a real
+`*.firebaseapp.com` authDomain, which no automated test in this suite exercises. Fixed by
+adding `https://*.firebaseapp.com` to `frame-src` (`index.html`,
+`docs/adr/ADR-002-csp-sri-security.md` updated to match). Separately (found in the same
+pass, not yet the reported bug but a latent one): `firebase.config.js`'s `googleClientId`
+had a leading space in the copied Client ID string — harmless for the initial popup sign-in
+(which doesn't read `googleClientId` at all, see §5.14) but would have broken GIS's silent
+token refresh the first time it fired, since that's the one path that does use it
+(`googleDriveAuth.js`'s `ensureTokenClient()`). `firebase.config.js` is gitignored/
+per-developer, so this couldn't be fixed in the repo — flagged for the developer to correct
+locally.
