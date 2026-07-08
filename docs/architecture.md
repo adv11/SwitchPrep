@@ -1379,3 +1379,81 @@ longer anonymous by the time `signOut()` could ever run, so that path was alread
 orphan-free and is unaffected. If the cleanup call itself throws (e.g. a stale token),
 it falls back to a plain sign-out rather than trapping the user in the app over a
 cleanup failure. See `tests/unit/firebaseSignOutCleanup.test.js` for the unit coverage.
+
+### 2026-07-08 — PR #TBD — ESLint complexity gates, targeted refactors, client-side security hardening (issue #53)
+
+Based on SonarSource's "Does Code Cleanliness Affect Coding Agents?" study
+(arXiv:2605.20049): cleaner code (fewer static-analysis violations, lower cognitive
+complexity) measurably reduced coding-agent token cost and file revisitations. Three
+parts: CI gates, targeted refactors to satisfy them, and unrelated client-side security
+hardening bundled into the same issue.
+
+**Part 1 — ESLint gates (`eslint.config.js`).** Added four ESLint core rules as `warn`
+— `complexity: 10`, `max-depth: 4`, `max-lines-per-function: { max: 80 }`, `max-params:
+4` — plus `no-prototype-builtins: 'error'` (a core rule, not a new dependency).
+`eslint-plugin-security`'s `detect-unsafe-regex`/`detect-non-literal-regexp` were
+evaluated and skipped: adding it would be this project's first ESLint plugin
+dependency, and a repo-wide grep found no dynamic `new RegExp(...)` construction or
+`hasOwnProperty`/`Object.prototype` access in `src/` for it to catch today. Baseline at
+issue creation: 16 violations across 7 files. The rules stay `warn` rather than
+flipping to `error` — Part 2 below brought its three targeted files to zero violations,
+but `itemPanel.js`, `signUp.js`, `onboarding.js`, and `importRoadmapModal.js` (outside
+this issue's declared scope) still carry pre-existing violations of their own.
+`roadmapStore.js`'s `setUser()`/`switchRoadmap()`/`resolveRoadmapItems()` also still
+exceed the complexity/line thresholds beyond the one extraction Part 2 called for —
+these functions carry many *documented, load-bearing* invariants (stale-call guards,
+legacy migrations, echo detection) accumulated across several issues, and restructuring
+them further was judged out of scope for this issue's risk budget.
+
+**Part 2 — targeted refactors.** `dashboard.js`: extracted module-scope
+`renderFilterChips(items, activeFilter, onFilterChange)` and `renderPhaseCard(phase,
+pi, deps)` (previously inlined/anonymous-closure logic inside `render()`), and hoisted
+`showDeleteModal()` out of the `renderDashboard` closure entirely — it only ever
+touched module-level imports (`authApi`, `showToast`, `navigate`), so it had no real
+dependency on `renderDashboard`'s reactive state. `render()` dropped from ~88 to ~30
+lines. `signIn.js`: extracted module-scope `buildSignInForm({ prefillEmail,
+onForgotPassword })` and `buildResetForm({ prefillEmail, onBack, onSuccess })` out of
+the `showSignInView`/`showResetView` closures, which become thin ~10-line wrappers;
+`buildSignInForm`'s guest-sign-in handler was further split into a small
+`signInAsGuest()` helper purely to clear the `max-lines-per-function` threshold.
+`roadmapStore.js`: extracted a pure, exported `applyRemoteSnapshot(remote,
+currentItems, currentPhases, recentFlushedStrs)` from `attachRoadmapListener`'s
+`onValue` callback — the stableStringify-compare / echo-detection /
+`structuralVersion`-bump decision was three closures deep and impossible to unit-test
+without a real Firebase listener; it now returns `null` (nothing to apply) or `{
+items, phases, structuralVersionBumped }` for the caller to assign onto store state.
+See `tests/integration/roadmapStore.test.js`'s "applyRemoteSnapshot" describe block.
+
+**Part 3 — client-side security hardening.** New `src/core/roadmap/limits.js`
+(dependency-free — no Firebase, no store) exports `MAX_TITLE_LENGTH` (200),
+`MAX_RESOURCE_LABEL_LENGTH` (120), `MAX_RESOURCE_URL_LENGTH` (2048), and
+`isValidResource()`. `roadmapStore.js`'s `addItem()`, `updateItem()`, `addResource()`,
+and `updateResource()` — the only places these fields are ever written — now reject
+(returning `false`, mutating nothing) a title or resource over these caps; `itemPanel.js`
+and `dashboard.js`'s quick-add row surface a friendly inline/toast message using the
+same constants before the store call is even attempted, mirroring issue #24's
+server-rule-rejects/client-rule-warns-first pattern. `limits.js` was deliberately split
+out of `roadmapStore.js` (rather than exporting the constants from there) because
+`roadmapStore.js` transitively imports the Firebase SDK via `adapterFactory.js` →
+`FirebaseAdapter.js` → `firebase.js`'s `https://www.gstatic.com/...` imports —
+`itemPanel.js` has no other reason to load that chain, and doing so broke its existing
+unit tests (which don't mock `firebase.js`) under Node's ESM loader.
+
+The pre-existing per-roadmap item cap (issue #24) was lowered from 1,000 to 800 — no
+real roadmap organically approaches even 800 topics, so the tighter cap costs no
+legitimate user anything while shrinking the accidental-storage-runaway window on the
+free tier further. (The issue's Part 3b originally asked for a *new*, separate 500-item
+cap without realizing issue #24 had already shipped one; rather than stacking two
+overlapping caps, the existing one was tightened instead.)
+
+`authApi.deleteAccount()` (`src/services/firebase.js`) now calls a new
+`assertAccountDeletable(user)` guard (`src/services/accountGuards.js`) as its first
+line, throwing for an anonymous user instead of attempting to build an
+`EmailAuthProvider` credential from a guest account that has no email. Extracted into
+its own dependency-free module — same reasoning as `authCleanup.js`'s
+`signOutWithCleanup()` — so it's unit-testable (`tests/unit/accountGuards.test.js`)
+without importing the real `firebase.js`, which is unimportable in CI (gitignored
+`firebase.config.js`, `https://` SDK imports rejected by Node's default ESM loader).
+This is defense in depth: the dashboard already hides the Delete-account button for
+anonymous users; this guard protects the API layer even if some future call site
+doesn't.

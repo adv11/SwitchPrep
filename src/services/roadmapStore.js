@@ -2,13 +2,17 @@ import { ROADMAP_VERSION, buildSeedItems, PHASES } from '../data/roadmap.js';
 import { buildSeedItems as buildTemplateSeedItems, getTemplatePhases, getLegacyBlankTemplateData } from '../data/templates/index.js';
 import { getStorageAdapter } from './storage/adapterFactory.js';
 import { KEYS } from './localStorageKeys.js';
+import { MAX_TITLE_LENGTH, isValidResource } from '../core/roadmap/limits.js';
 
 const LOCAL_KEY = KEYS.ROADMAP;
 const UI_KEY = KEYS.UI_STATE;
 
-// Firebase rules can't count a map's children directly, so the 1000-item-per-roadmap
-// cap (issue #24) is enforced here — the one place every new item is created.
-const MAX_ITEMS_PER_ROADMAP = 1000;
+// Firebase rules can't count a map's children directly, so the per-roadmap item
+// cap is enforced here — the one place every new item is created. Lowered from
+// 1,000 (issue #24) to 800 (issue #53): no real roadmap organically approaches
+// even 800 topics, so the tighter cap costs no legitimate user anything while
+// shrinking the accidental-storage-runaway window on the free tier.
+const MAX_ITEMS_PER_ROADMAP = 800;
 
 // Firebase's onValue listener fires on every write to the path, including the
 // echo of writes this same client just made. Comparing with JSON.stringify
@@ -42,6 +46,32 @@ function normalizeStringArray(value) {
   if (Array.isArray(value)) return value;
   if (value && typeof value === 'object') return Object.values(value);
   return null;
+}
+
+// Extracted from inside attachRoadmapListener's onValue callback (issue #53) —
+// the remote-data merge decision (stableStringify compare, structuralVersion
+// bump, echo detection) is a distinct responsibility that was buried three
+// levels deep and impossible to unit-test without a real Firebase listener.
+// Pure: takes the incoming remote payload plus the current in-memory state and
+// returns either `null` (nothing to apply — no items, or a confirmed echo of
+// one of our own recent flushes) or the resolved `{ items, phases,
+// structuralVersionBumped }` for the caller to assign onto its own state.
+export function applyRemoteSnapshot(remote, currentItems, currentPhases, recentFlushedStrs) {
+  if (!remote?.items) return null;
+  // Phases are folded into the same echo/structural comparison as items
+  // (rather than checked separately) so a custom roadmap's user-added
+  // phases/sections get the exact same echo-guard and multi-device sync
+  // guarantees as items — built-in templates never have differing phases
+  // here, so this is a no-op for them.
+  const remotePhases = normalizeStringArray(remote.phases) || currentPhases;
+  const remoteStr = stableStringify({ items: remote.items, phases: remotePhases });
+  if (recentFlushedStrs.includes(remoteStr)) {
+    // Confirmed echo of one of our own recent writes (possibly not the latest
+    // one, if it arrived out of order) — nothing new to apply.
+    return null;
+  }
+  const structuralVersionBumped = remoteStr !== stableStringify({ items: currentItems, phases: currentPhases });
+  return { items: remote.items, phases: remotePhases, structuralVersionBumped };
 }
 
 function readLocalRoadmaps() {
@@ -256,24 +286,11 @@ export function createRoadmapStore() {
         notify({ saveState: 'synced' });
         return;
       }
-      if (remote?.items) {
-        // Phases are folded into the same echo/structural comparison as items
-        // (rather than a separate check) so a custom roadmap's user-added
-        // phases/sections get the exact same echo-guard and multi-device sync
-        // guarantees as items — built-in templates never have differing
-        // phases here, so this is a no-op for them.
-        const remotePhases = normalizeStringArray(remote.phases) || templatePhases;
-        const remoteStr = stableStringify({ items: remote.items, phases: remotePhases });
-        if (recentFlushedStrs.includes(remoteStr)) {
-          // Confirmed echo of one of our own recent writes (possibly not the
-          // latest one, if it arrived out of order) — skip the redundant
-          // overwrite and structuralVersion bump.
-          notify({ saveState: 'synced' });
-          return;
-        }
-        if (remoteStr !== stableStringify({ items, phases: templatePhases })) structuralVersion += 1;
-        items = remote.items;
-        templatePhases = remotePhases;
+      const applied = applyRemoteSnapshot(remote, items, templatePhases, recentFlushedStrs);
+      if (applied) {
+        if (applied.structuralVersionBumped) structuralVersion += 1;
+        items = applied.items;
+        templatePhases = applied.phases;
         dirty = false;
         persistLocal();
         roadmapCache[activeTemplateId] = { items, phases: templatePhases, dirty: false };
@@ -869,8 +886,13 @@ export function createRoadmapStore() {
     queueSave();
   }
 
+  // Returns false (mutating nothing) when the patch fails a length cap (issue
+  // #53) — callers must check this return value instead of assuming success,
+  // same convention as addItem()'s item-count cap.
   function updateItem(id, patch) {
-    if (!items[id]) return;
+    if (!items[id]) return false;
+    if (typeof patch.title === 'string' && (!patch.title.trim() || patch.title.length > MAX_TITLE_LENGTH)) return false;
+    if (Array.isArray(patch.resources) && !patch.resources.every(isValidResource)) return false;
     // Only a `done` toggle is cosmetic (see docs/architecture.md §5.1). A
     // `notes` patch (issue #15) must NOT be added here — the notes indicator
     // badge on the row needs structuralVersion to bump so it re-renders.
@@ -882,16 +904,19 @@ export function createRoadmapStore() {
       updatedAt: Date.now()
     };
     queueSave();
+    return true;
   }
 
   function addItem({ title, phase, section, priority }) {
+    const trimmedTitle = (title || '').trim();
+    if (!trimmedTitle || trimmedTitle.length > MAX_TITLE_LENGTH) return false;
     const activeCount = Object.values(items).filter(item => !item.deleted).length;
     if (activeCount >= MAX_ITEMS_PER_ROADMAP) return false;
     const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     structuralVersion += 1;
     items[id] = {
       id,
-      title: title.trim(),
+      title: trimmedTitle,
       phase,
       section,
       priority,
@@ -919,17 +944,17 @@ export function createRoadmapStore() {
 
   function addResource(id, resource) {
     const item = items[id];
-    if (!item) return;
+    if (!item) return false;
     const next = [...(item.resources || []), resource];
-    updateItem(id, { resources: next });
+    return updateItem(id, { resources: next });
   }
 
   function updateResource(id, index, resource) {
     const item = items[id];
-    if (!item) return;
+    if (!item) return false;
     const next = [...(item.resources || [])];
     next[index] = resource;
-    updateItem(id, { resources: next });
+    return updateItem(id, { resources: next });
   }
 
   function removeResource(id, index) {

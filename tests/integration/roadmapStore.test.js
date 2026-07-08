@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createRoadmapStore } from '../../src/services/roadmapStore.js';
+import { createRoadmapStore, applyRemoteSnapshot } from '../../src/services/roadmapStore.js';
 import { buildSeedItems } from '../../src/data/roadmap.js';
 import { dbApi, getStorageAdapter } from '../../src/services/storage/adapterFactory.js';
+import { MAX_TITLE_LENGTH, MAX_RESOURCE_LABEL_LENGTH, MAX_RESOURCE_URL_LENGTH } from '../../src/core/roadmap/limits.js';
 
 // Mocks the adapter roadmapStore.js gets from getStorageAdapter() (issue #5) —
 // still named/shaped like the old `dbApi` fake so the 60+ tests below that
@@ -159,15 +160,18 @@ describe('structuralVersion contract', () => {
   });
 });
 
-// Issue #24 — Firebase rules can't count a map's children, so the 1000-item
-// cap per roadmap is enforced client-side, in the one place items are created.
-describe('addItem — per-roadmap item cap (issue #24)', () => {
-  it('rejects a new item once the roadmap already holds 1000 active items', () => {
+// Issue #24 — Firebase rules can't count a map's children, so a per-roadmap
+// item cap is enforced client-side, in the one place items are created.
+// Lowered from 1,000 to 800 in issue #53 (no real roadmap organically
+// approaches even 800 topics; the tighter cap shrinks the accidental-storage-
+// runaway window on the free tier without costing legitimate users anything).
+describe('addItem — per-roadmap item cap (issues #24, #53)', () => {
+  it('rejects a new item once the roadmap already holds 800 active items', () => {
     vi.useFakeTimers();
     const store = createRoadmapStore();
     const initialCount = Object.values(store.getSnapshot().allItems).filter(i => !i.deleted).length;
 
-    for (let i = 0; i < 1000 - initialCount; i++) {
+    for (let i = 0; i < 800 - initialCount; i++) {
       const ok = store.addItem({ title: `Topic ${i}`, phase: 'Java Core', section: 'Basics', priority: 'high' });
       expect(ok).toBe(true);
     }
@@ -177,7 +181,7 @@ describe('addItem — per-roadmap item cap (issue #24)', () => {
 
     expect(rejected).toBe(false);
     expect(store.getSnapshot().structuralVersion).toBe(before);
-    expect(Object.values(store.getSnapshot().allItems).filter(i => !i.deleted)).toHaveLength(1000);
+    expect(Object.values(store.getSnapshot().allItems).filter(i => !i.deleted)).toHaveLength(800);
   });
 
   it('a soft-deleted item does not count toward the cap', () => {
@@ -185,7 +189,7 @@ describe('addItem — per-roadmap item cap (issue #24)', () => {
     const store = createRoadmapStore();
     const initialCount = Object.values(store.getSnapshot().allItems).filter(i => !i.deleted).length;
 
-    for (let i = 0; i < 1000 - initialCount; i++) {
+    for (let i = 0; i < 800 - initialCount; i++) {
       store.addItem({ title: `Topic ${i}`, phase: 'Java Core', section: 'Basics', priority: 'high' });
     }
     const customIds = Object.keys(store.getSnapshot().allItems).filter(id => id.startsWith('custom-'));
@@ -1288,5 +1292,162 @@ describe('blank-template migration (issue #4 follow-up)', () => {
 
     expect(store2.getSnapshot().activeTemplateId).toBe(migratedId);
     expect(store2.getSnapshot().customRoadmaps).toHaveLength(1); // not duplicated
+  });
+});
+
+// Extracted from inside attachRoadmapListener's onValue callback (issue #53) —
+// a pure function so the remote-merge decision (echo detection, structural
+// version bump) can be unit-tested without a real Firebase listener.
+describe('applyRemoteSnapshot (issue #53)', () => {
+  it('returns null when the remote payload has no items', () => {
+    expect(applyRemoteSnapshot({}, {}, [], [])).toBeNull();
+    expect(applyRemoteSnapshot(null, {}, [], [])).toBeNull();
+  });
+
+  // Mirrors roadmapStore.js's internal stableStringify (key-order-independent,
+  // since Realtime Database returns keys sorted) so this test can construct a
+  // string that matches what applyRemoteSnapshot computes internally.
+  function stableStringify(value) {
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+    if (value && typeof value === 'object') {
+      return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+  }
+
+  it('returns null (a no-op) when the remote payload matches a recent flush of our own', () => {
+    const items = { a: { id: 'a', title: 'A' } };
+    const phases = [{ id: 'p1', title: 'Phase 1' }];
+    const flushedStr = stableStringify({ items, phases });
+    const result = applyRemoteSnapshot({ items, phases }, {}, [], [flushedStr]);
+    expect(result).toBeNull();
+  });
+
+  it('flags structuralVersionBumped when remote items differ from current items', () => {
+    const currentItems = { a: { id: 'a', title: 'A', done: false } };
+    const remote = { items: { a: { id: 'a', title: 'A', done: true } } };
+    const result = applyRemoteSnapshot(remote, currentItems, [], []);
+    expect(result).not.toBeNull();
+    expect(result.structuralVersionBumped).toBe(true);
+    expect(result.items).toEqual(remote.items);
+  });
+
+  it('does not flag structuralVersionBumped when remote items are identical to current items', () => {
+    const currentItems = { a: { id: 'a', title: 'A', done: false } };
+    const remote = { items: { a: { id: 'a', title: 'A', done: false } } };
+    const result = applyRemoteSnapshot(remote, currentItems, [], []);
+    expect(result).not.toBeNull();
+    expect(result.structuralVersionBumped).toBe(false);
+  });
+
+  it('falls back to the current phases when the remote payload omits phases', () => {
+    const currentPhases = [{ id: 'p1', title: 'Phase 1' }];
+    const remote = { items: { a: { id: 'a' } } };
+    const result = applyRemoteSnapshot(remote, {}, currentPhases, []);
+    expect(result.phases).toBe(currentPhases);
+  });
+});
+
+// Client-side length caps (issue #53) — the client half of issue #24's
+// server-side Firebase rules validation.
+describe('client-side length caps (issue #53)', () => {
+  function firstItemId(store) {
+    return Object.keys(store.getSnapshot().allItems)[0];
+  }
+
+  it('addItem() rejects a title over the max length', () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    const before = store.getSnapshot().structuralVersion;
+    const ok = store.addItem({
+      title: 'x'.repeat(MAX_TITLE_LENGTH + 1),
+      phase: 'Java Core',
+      section: 'Basics',
+      priority: 'high'
+    });
+    expect(ok).toBe(false);
+    expect(store.getSnapshot().structuralVersion).toBe(before);
+  });
+
+  it('addItem() accepts a title at exactly the max length', () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    const ok = store.addItem({
+      title: 'x'.repeat(MAX_TITLE_LENGTH),
+      phase: 'Java Core',
+      section: 'Basics',
+      priority: 'high'
+    });
+    expect(ok).toBe(true);
+  });
+
+  it('updateItem() rejects a title patch over the max length', () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    const id = firstItemId(store);
+    const originalTitle = store.getSnapshot().allItems[id].title;
+    const ok = store.updateItem(id, { title: 'x'.repeat(MAX_TITLE_LENGTH + 1) });
+    expect(ok).toBe(false);
+    expect(store.getSnapshot().allItems[id].title).toBe(originalTitle);
+  });
+
+  it('updateItem() rejects an empty title patch', () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    const id = firstItemId(store);
+    const ok = store.updateItem(id, { title: '   ' });
+    expect(ok).toBe(false);
+  });
+
+  it('updateItem() rejects a resource with an over-length label', () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    const id = firstItemId(store);
+    const originalResources = store.getSnapshot().allItems[id].resources;
+    const ok = store.updateItem(id, {
+      resources: [{ label: 'x'.repeat(MAX_RESOURCE_LABEL_LENGTH + 1), url: 'https://example.com' }]
+    });
+    expect(ok).toBe(false);
+    expect(store.getSnapshot().allItems[id].resources).toBe(originalResources);
+  });
+
+  it('updateItem() rejects a resource with an over-length url', () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    const id = firstItemId(store);
+    const ok = store.updateItem(id, {
+      resources: [{ label: 'Docs', url: `https://example.com/${'x'.repeat(MAX_RESOURCE_URL_LENGTH)}` }]
+    });
+    expect(ok).toBe(false);
+  });
+
+  it('updateItem() accepts resources within the length caps', () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    const id = firstItemId(store);
+    const ok = store.updateItem(id, { resources: [{ label: 'Docs', url: 'https://example.com' }] });
+    expect(ok).toBe(true);
+    expect(store.getSnapshot().allItems[id].resources).toHaveLength(1);
+  });
+
+  it('addResource() rejects an over-length resource and does not mutate the item', () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    store.addItem({ title: 'Fresh topic', phase: 'Java Core', section: 'Basics', priority: 'high' });
+    const id = Object.keys(store.getSnapshot().allItems).find(itemId => itemId.startsWith('custom-'));
+    const ok = store.addResource(id, { label: 'x'.repeat(MAX_RESOURCE_LABEL_LENGTH + 1), url: 'https://example.com' });
+    expect(ok).toBe(false);
+    expect(store.getSnapshot().allItems[id].resources).toHaveLength(0);
+  });
+
+  it('updateResource() rejects an over-length replacement resource', () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    store.addItem({ title: 'Fresh topic', phase: 'Java Core', section: 'Basics', priority: 'high' });
+    const id = Object.keys(store.getSnapshot().allItems).find(itemId => itemId.startsWith('custom-'));
+    store.addResource(id, { label: 'Docs', url: 'https://example.com' });
+    const ok = store.updateResource(id, 0, { label: 'Docs', url: `https://example.com/${'x'.repeat(MAX_RESOURCE_URL_LENGTH)}` });
+    expect(ok).toBe(false);
+    expect(store.getSnapshot().allItems[id].resources[0].url).toBe('https://example.com');
   });
 });
