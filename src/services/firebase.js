@@ -57,7 +57,24 @@ export const authApi = {
   guest() {
     return signInAnonymously(auth);
   },
-  signOut() {
+  // Anonymous Firebase Auth users are never re-authenticatable once the session
+  // token is gone, so an unlinked guest who signs out would otherwise leave
+  // orphaned roadmap data in the database forever (issue #24). Delete the
+  // account and its data on the way out instead. A guest who links to a real
+  // account first (signUp.js) is no longer anonymous by the time this runs, so
+  // that path is unaffected and never creates an orphan in the first place.
+  async signOut() {
+    const user = auth.currentUser;
+    if (user?.isAnonymous) {
+      try {
+        await remove(ref(database, `users/${user.uid}`));
+        await deleteUser(user);
+        return;
+      } catch {
+        // Cleanup failing (e.g. a stale token) must never block the user from
+        // leaving the app — fall through to a plain sign-out.
+      }
+    }
     return signOut(auth);
   },
   sendResetEmail(email) {
