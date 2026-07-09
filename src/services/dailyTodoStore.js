@@ -214,6 +214,18 @@ export function createDailyTodoStore() {
     queueSave();
   }
 
+  // Permanently removes a todo — unlike the roadmap's soft-delete pattern,
+  // done/missed todos have no "undo" affordance and no bearing on
+  // MAX_ACTIVE_TODOS, so there's no reason to keep them around forever once
+  // the user is done with them. Callers (the UI) are responsible for
+  // confirming this with the user first — same convention as
+  // deleteCustomRoadmap/removePhase in roadmapStore.js.
+  function removeTodo(id) {
+    if (!items[id]) return;
+    delete items[id];
+    queueSave();
+  }
+
   return {
     subscribe(callback) {
       subscribers.add(callback);
@@ -222,6 +234,7 @@ export function createDailyTodoStore() {
     },
     setUser,
     getSnapshot,
+    removeTodo,
     addTodo,
     setDone,
     flush

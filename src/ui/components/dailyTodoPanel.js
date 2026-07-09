@@ -1,5 +1,7 @@
 import { el } from '../dom.js';
 import { showToast } from './toast.js';
+import { confirmDialog } from './confirmDialog.js';
+import { openDailyTodoGuide } from './dailyTodoGuide.js';
 import { isExpired, remainingMs, formatRemaining, remainingBand } from '../utils/dailyTodo.js';
 import { MAX_TODO_TITLE_LENGTH, MAX_ACTIVE_TODOS, DURATION_PRESETS, MIN_DURATION_MS, MAX_DURATION_MS } from '../../core/dailyTodo/limits.js';
 
@@ -103,9 +105,26 @@ export function createDailyTodoPanel(store) {
     missedToggle.classList.toggle('open', missedOpen);
   });
 
+  // A done or missed todo has no further use — offer to remove it for good
+  // so the list doesn't grow unbounded (issue #56 follow-up). An active todo
+  // never gets this button; deleting something you're still working toward
+  // isn't a mistake worth one click to recover from the way undoing a
+  // checkbox is.
+  async function handleDelete(todo) {
+    if (!await confirmDialog({
+      title: `Delete "${todo.title}"?`,
+      message: 'This removes it for good. This cannot be undone.',
+      confirmText: 'Delete',
+      danger: true
+    })) return;
+    store.removeTodo(todo.id);
+  }
+
   function renderRow(todo, now) {
+    const expired = isExpired(todo, now);
     const ms = remainingMs(todo, now);
     const band = todo.done ? null : remainingBand(ms);
+    const isFinished = todo.done || expired;
     return el('div', {
       className: `daily-todo-item ${todo.done ? 'done' : ''}`,
       dataset: { id: todo.id }
@@ -119,7 +138,16 @@ export function createDailyTodoPanel(store) {
         }),
         el('span', { className: 'daily-todo-title', text: todo.title })
       ]),
-      !todo.done ? el('span', { className: `daily-todo-remaining ${band}`, text: formatRemaining(ms) }) : null
+      !todo.done ? el('span', { className: `daily-todo-remaining ${band}`, text: formatRemaining(ms) }) : null,
+      isFinished ? el('button', {
+        type: 'button',
+        className: 'daily-todo-delete',
+        'data-action': 'delete',
+        'aria-label': `Delete "${todo.title}"`,
+        title: 'Delete',
+        text: '×',
+        onClick: () => handleDelete(todo)
+      }) : null
     ].filter(Boolean));
   }
 
@@ -147,7 +175,17 @@ export function createDailyTodoPanel(store) {
   const tickTimer = setInterval(render, TICK_MS);
 
   const node = el('section', { className: 'daily-todo-panel' }, [
-    el('h2', { className: 'daily-todo-heading', text: "Today's Todos" }),
+    el('div', { className: 'daily-todo-heading-row' }, [
+      el('h2', { className: 'daily-todo-heading', text: "Today's Todos" }),
+      el('button', {
+        type: 'button',
+        className: 'daily-todo-info-btn',
+        'aria-label': "About Today's Todos",
+        title: "About Today's Todos",
+        text: 'ℹ',
+        onClick: () => openDailyTodoGuide()
+      })
+    ]),
     addForm,
     activeList,
     missedToggle,

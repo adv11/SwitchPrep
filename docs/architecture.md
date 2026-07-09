@@ -1537,3 +1537,27 @@ so both resolve before the onboarding-routing decision runs), and passes it thro
 `guardApp`'s ctx to every route. `dashboard.js` mounts `createDailyTodoPanel(dailyTodoStore)`
 only when a `dailyTodoStore` is present in ctx (existing dashboard tests that don't pass
 one still render without the panel, no test changes required for that reason alone).
+
+**Placement follow-up.** Initially mounted between the header and the phase-list
+`content` — technically correct (the store is independent of any roadmap) but visually
+read as *part of* whichever roadmap's dashboard you were looking at, since it rendered
+directly below the hero card showing that roadmap's name/progress. Moved inside
+`<header class="dashboard-header">`, between `.header-top` (brand/nav) and `.hero-panel`
+(the roadmap name/progress card), so it's now the first thing under the nav bar —
+visually ahead of and separate from the active roadmap, matching the fact that switching
+or hiding a roadmap never touches this data.
+
+**Cleanup follow-up — `removeTodo` and the guide modal.** Two gaps found once the
+feature was actually used: (1) a done todo stayed visible (struck through) forever with
+no way to clear it, and a missed todo could only be *seen* via the collapsed section,
+never cleared either — both lists would grow without bound. `dailyTodoStore.js` gained
+`removeTodo(id)` (a hard delete, unlike the roadmap's soft-delete-and-keep-forever
+pattern — a done/missed todo has no further use and no undo value), and
+`dailyTodoPanel.js` renders a ✕ button on any `done` or expired-and-not-done row (never
+an active one) that calls it after a `confirmDialog({ danger: true })` — same
+destructive-action convention as `removePhase`/`deleteCustomRoadmap`'s call sites. (2)
+The feature had no explanation anywhere in the app. Added an ℹ corner button next to the
+"Today's Todos" heading opening `src/ui/components/dailyTodoGuide.js`
+(`openDailyTodoGuide()`), a small informational modal — the same shape as
+`buildYourOwnGuide.js` — covering the rolling-deadline/preset-duration model and the
+done/Missed/delete behavior.

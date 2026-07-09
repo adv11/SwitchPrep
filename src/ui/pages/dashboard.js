@@ -682,6 +682,7 @@ export function renderDashboard(app, { user, store, dailyTodoStore }) {
           })
         ].filter(Boolean))
       ]),
+      dailyTodoPanel,
       el('div', { className: 'hero-panel' }, [
         el('div', { className: 'hero-copy' }, [
           el('div', { className: 'current-roadmap-badge' }, [
@@ -713,7 +714,6 @@ export function renderDashboard(app, { user, store, dailyTodoStore }) {
         ])
       ])
     ]),
-    dailyTodoPanel,
     content,
     saveBadge
   ]);

@@ -750,16 +750,40 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
    list, sourced from its own store (dailyTodoStore.js), not roadmapStore. */
 .daily-todo-panel {
   max-width: 1160px;
-  margin: 0 auto;
+  margin: 0 auto 18px;
   width: 100%;
   padding: 0 20px;
   box-sizing: border-box;
 }
-.daily-todo-heading {
+.daily-todo-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 10px;
+}
+.daily-todo-heading {
+  margin: 0;
   font-size: 15px;
   font-weight: 800;
 }
+.daily-todo-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.daily-todo-info-btn:hover { color: var(--brand); border-color: var(--brand); }
+.daily-todo-info-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
 .daily-todo-panel > .daily-todo-add-row,
 .daily-todo-panel > .daily-todo-list,
 .daily-todo-panel > .daily-todo-missed-toggle,
@@ -820,6 +844,25 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .daily-todo-remaining.ok { color: var(--brand); }
 .daily-todo-remaining.warn { color: var(--p1); }
 .daily-todo-remaining.danger { color: var(--p0); }
+
+.daily-todo-delete {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.daily-todo-delete:hover { color: var(--danger); background: var(--status-error-bg); }
+.daily-todo-delete:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
 
 .daily-todo-missed-toggle {
   display: block;
@@ -1263,6 +1306,7 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   .btn-sm { min-height: 44px; }
   .filter-chip { min-height: 44px; }
   .check-item { min-height: 44px; }
+  .daily-todo-delete, .daily-todo-info-btn { width: 44px; height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -129,7 +129,8 @@ src/ui/pages/dashboard.js     the roadmap dashboard (the whole app, really)
 src/ui/components/authShell.js   shared chrome for signIn/signUp (brand row + theme toggle + card)
 src/ui/components/brand.js       canonical brand mark/wordmark — createBrandMark()/createBrandIcon()
 src/ui/components/themeToggle.js reusable dark/light toggle button
-src/ui/components/dailyTodoPanel.js  "Today's Todos" card (issue #56) — add form, live countdown, collapsed Missed section
+src/ui/components/dailyTodoPanel.js  "Today's Todos" card (issue #56) — add form, live countdown, collapsed Missed section, delete-when-finished, info button
+src/ui/components/dailyTodoGuide.js  informational modal reachable from the Daily Todos card's ℹ button — explains the rolling-deadline/Missed/delete model (issue #56 follow-up)
 src/ui/components/itemPanel.js   slide-in panel for editing a topic + its resources + notes
 src/ui/components/toast.js       transient toast notifications
 src/ui/components/buildYourOwnGuide.js  informational modal — "How do I build my own roadmap?"
@@ -204,7 +205,22 @@ device clock/timezone change can't retroactively move a deadline. Expiry itself
 is a pure, derived value computed on read — there is no server cron on this static-hosted
 app to run a background "mark expired" job, so a missed (expired, not done) todo just
 stops rendering as active and moves into a collapsed "Missed" section instead of ever
-being deleted.
+being auto-deleted — deletion is always an explicit, confirmed user action instead (see
+`removeTodo(id)` below). Never deleted *automatically* is not the same as *never
+deletable*: `removeTodo(id)` permanently drops a todo from the store, but only the UI
+exposes it — a ✕ button that appears on a `done` or missed (never an active) row, gated
+behind `confirmDialog({ danger: true })` since it has no undo, unlike toggling `done`.
+Without this, the Missed section and the done-but-still-visible rows in the active list
+would both grow forever with no way to clean them up. `dailyTodoPanel.js` also gets a
+corner ℹ button (`openDailyTodoGuide()`, `src/ui/components/dailyTodoGuide.js`, same
+pattern as `buildYourOwnGuide.js`) explaining the rolling-deadline/preset-duration/
+Missed/delete model in place, since this feature has no other onboarding. **Placement in
+`dashboard.js`: the Daily Todos card renders inside `<header class="dashboard-header">`,
+between `.header-top` (the nav bar) and `.hero-panel` (the active-roadmap name/progress
+card) — deliberately above and visually separate from the roadmap hero, not nested
+inside the phase-list content below it, since the data itself is global to the user and
+untouched by which roadmap is active or by switching/hiding one.** If you ever add
+another place that shows roadmap-specific chrome, don't sandwich Daily Todos inside it.
 
 **Storage adapter abstraction (`src/services/storage/`, issue #5, part 1).**
 `roadmapStore.js` never imports `firebase.js` directly for roadmap/meta reads and

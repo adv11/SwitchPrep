@@ -29,6 +29,10 @@ function createFakeStore(initialTodos = []) {
     setDone(id, done) {
       todos = todos.map(t => (t.id === id ? { ...t, done, doneAt: done ? Date.now() : null } : t));
       notify();
+    },
+    removeTodo(id) {
+      todos = todos.filter(t => t.id !== id);
+      notify();
     }
   };
 }
@@ -115,6 +119,68 @@ describe('createDailyTodoPanel', () => {
     select.value = 'custom';
     select.dispatchEvent(new Event('change'));
     expect(customInput.hidden).toBe(false);
+    node._cleanup();
+  });
+
+  it('an active (not done, not missed) todo has no delete button', () => {
+    const store = createFakeStore();
+    store.addTodo({ title: 'Task', durationMs: 60 * 60 * 1000 });
+    const node = createDailyTodoPanel(store);
+
+    expect(node.querySelector('.daily-todo-item .daily-todo-delete')).toBeNull();
+    node._cleanup();
+  });
+
+  it('a done todo gets a delete button that removes it after confirmation', async () => {
+    const store = createFakeStore();
+    store.addTodo({ title: 'Task', durationMs: 60 * 60 * 1000 });
+    const id = store.getSnapshot().todos[0].id;
+    store.setDone(id, true);
+    const node = createDailyTodoPanel(store);
+
+    node.querySelector('.daily-todo-item .daily-todo-delete').click();
+    const confirmBtn = document.querySelector('.modal-overlay [data-action="confirm"]');
+    expect(confirmBtn).toBeTruthy();
+    confirmBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(node.querySelector('.daily-todo-item')).toBeNull();
+    node._cleanup();
+  });
+
+  it('cancelling the delete confirmation keeps the todo', async () => {
+    const store = createFakeStore();
+    store.addTodo({ title: 'Task', durationMs: 60 * 60 * 1000 });
+    const id = store.getSnapshot().todos[0].id;
+    store.setDone(id, true);
+    const node = createDailyTodoPanel(store);
+
+    node.querySelector('.daily-todo-item .daily-todo-delete').click();
+    document.querySelector('.modal-overlay [data-action="cancel"]').click();
+
+    expect(node.querySelector('.daily-todo-item')).toBeTruthy();
+    node._cleanup();
+  });
+
+  it('a missed todo also gets a delete button', () => {
+    const now = Date.now();
+    const store = createFakeStore([
+      { id: 'a', title: 'Missed task', createdAt: now - 2000, expiresAt: now - 1000, done: false, doneAt: null }
+    ]);
+    const node = createDailyTodoPanel(store);
+    node.querySelector('.daily-todo-missed-toggle').click();
+
+    expect(node.querySelector('.daily-todo-missed-list .daily-todo-delete')).toBeTruthy();
+    node._cleanup();
+  });
+
+  it('the info button opens the Daily Todos guide modal', () => {
+    const node = createDailyTodoPanel(createFakeStore());
+    node.querySelector('.daily-todo-info-btn').click();
+
+    expect(document.querySelector('.modal-overlay[aria-label*="Today\'s Todos"]')).toBeTruthy();
+    document.querySelector('.modal-overlay [data-action], .modal-overlay .btn-primary').click();
     node._cleanup();
   });
 });

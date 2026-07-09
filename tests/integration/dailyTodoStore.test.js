@@ -112,6 +112,39 @@ describe('setDone', () => {
   });
 });
 
+describe('removeTodo', () => {
+  it('permanently removes a todo', async () => {
+    const store = createDailyTodoStore();
+    await store.setUser({ uid: 'u1' });
+    store.addTodo({ title: 'Task', durationMs: 60000 * 60 });
+    const id = store.getSnapshot().todos[0].id;
+
+    store.removeTodo(id);
+    expect(store.getSnapshot().todos).toHaveLength(0);
+  });
+
+  it('is a no-op for an id that does not exist', async () => {
+    const store = createDailyTodoStore();
+    await store.setUser({ uid: 'u1' });
+    store.addTodo({ title: 'Task', durationMs: 60000 * 60 });
+
+    store.removeTodo('nonexistent');
+    expect(store.getSnapshot().todos).toHaveLength(1);
+  });
+
+  it('frees a slot under MAX_ACTIVE_TODOS after removing an active todo', async () => {
+    const store = createDailyTodoStore();
+    await store.setUser({ uid: 'u1' });
+    for (let i = 0; i < MAX_ACTIVE_TODOS; i++) {
+      store.addTodo({ title: `Task ${i}`, durationMs: 60000 * 60 });
+    }
+    expect(store.addTodo({ title: 'Overflow', durationMs: 60000 * 60 })).toBe(false);
+
+    store.removeTodo(store.getSnapshot().todos[0].id);
+    expect(store.addTodo({ title: 'Now fits', durationMs: 60000 * 60 })).toBe(true);
+  });
+});
+
 describe('persistence', () => {
   it('persists to localStorage under KEYS.DAILY_TODOS within the debounce window', async () => {
     vi.useFakeTimers();
