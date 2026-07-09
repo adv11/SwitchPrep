@@ -1,0 +1,539 @@
+---
+paths:
+  - "src/services/roadmapStore.js"
+  - "src/services/dailyTodoStore.js"
+  - "src/services/storage/**"
+  - "src/core/roadmap/**"
+  - "src/core/dailyTodo/**"
+  - "src/data/templates/**"
+  - "src/data/importPrompt.js"
+  - "src/data/roadmap.js"
+  - "src/ui/pages/dashboard.js"
+  - "src/ui/pages/onboarding.js"
+  - "src/ui/components/dailyTodoPanel.js"
+  - "src/ui/components/dailyTodoGuide.js"
+  - "src/ui/components/addToDailyTodoModal.js"
+  - "src/ui/components/importRoadmapModal.js"
+  - "src/ui/components/newRoadmapModal.js"
+  - "src/ui/components/buildYourOwnGuide.js"
+  - "src/ui/components/itemPanel.js"
+  - "src/ui/utils/customRoadmapIcon.js"
+  - "src/ui/utils/dailyTodo.js"
+  - "tests/unit/roadmapStore*"
+  - "tests/integration/roadmapStore*"
+  - "tests/integration/dailyTodoStore*"
+---
+
+# Roadmap & Daily Todos store — data model, invariants, feature history
+
+This file is the roadmap/todo domain's institutional memory: the store contracts, the
+guards that prevent real regressions that have already happened once, and the reasoning
+behind the multi-roadmap/custom-roadmap/import/daily-todo feature set. Relocated from
+`CLAUDE.md` (issue #86) with no content changes — see `docs/adr/ADR-007-agent-memory-architecture.md`.
+
+**Resource URLs must be validated before use as `href`.** Any URL coming from the store
+(Firebase, localStorage) must pass `isValidUrl()` before being set as an anchor `href`.
+`isValidUrl()` accepts only `http:` and `https:` protocols — this blocks `javascript:`
+and `data:` URI injection. Apply this at both render time and save time.
+
+**Store pattern** (`src/services/roadmapStore.js`): a mutable `items` map for whichever
+template is currently active, `subscribe(callback)`/`notify()` for pub-sub, and a 500ms
+debounced `queueSave()` that persists to `localStorage` immediately and to the active
+storage adapter (see below) after the debounce. Snapshots carry `saveState`
+(`saving`/`saved`/`local`/`synced`/`error`), a `structuralVersion` counter,
+`activeTemplateId`, `startedTemplateIds` (issue #58), `onboardingDone`, and `phases`
+(the current template's phase/section skeleton — see below).
+
+**Daily Todos store (`src/services/dailyTodoStore.js`, issue #56) — a second instance of
+the Store pattern above, not a first one to design from scratch.** Same mutable map +
+`subscribe`/`notify` + 500ms debounced `queueSave()` (local immediately, storage adapter
+after the debounce) + Firebase-echo guard (`stableStringify`-based, duplicated rather than
+imported from `roadmapStore.js` so the two stores stay independent) + sign-out privacy
+guard (a uid transition clears this store's own local data too — see "Sign-out contract"
+below, which applies here just as much as to the roadmap). The one thing it deliberately
+does **not** carry over is `structuralVersion`: that optimization exists specifically to
+avoid tearing down/rebuilding every phase-card on a roadmap `done` toggle, and this list is
+flat and small (≤20 active items, `MAX_ACTIVE_TODOS`) with no equivalent expensive
+re-render to protect — a plain re-render on every store change is fine here. Each todo's
+`expiresAt` is a rolling deadline computed once at creation
+(`createdAt + durationMs`, `durationMs` chosen per-todo by the user from presets or a
+custom hours value — `src/core/dailyTodo/limits.js`) and stored, never recomputed, so a
+device clock/timezone change can't retroactively move a deadline. Expiry itself
+(`isExpired`/`remainingMs`/`formatRemaining`/`remainingBand`, `src/ui/utils/dailyTodo.js`)
+is a pure, derived value computed on read — there is no server cron on this static-hosted
+app to run a background "mark expired" job, so a missed (expired, not done) todo just
+stops rendering as active and moves into a collapsed "Missed" section instead of ever
+being auto-deleted — deletion is always an explicit, confirmed user action instead (see
+`removeTodo(id)` below). Never deleted *automatically* is not the same as *never
+deletable*: `removeTodo(id)` permanently drops a todo from the store, but only the UI
+exposes it — a ✕ button that appears on a `done` or missed (never an active) row, gated
+behind `confirmDialog({ danger: true })` since it has no undo, unlike toggling `done`.
+Without this, the Missed section and the done-but-still-visible rows in the active list
+would both grow forever with no way to clean them up. `dailyTodoPanel.js` also gets a
+corner ℹ button (`openDailyTodoGuide()`, `src/ui/components/dailyTodoGuide.js`, same
+pattern as `buildYourOwnGuide.js`) explaining the rolling-deadline/preset-duration/
+Missed/delete model in place, since this feature has no other onboarding. **Placement:
+the Daily Todos card lives on `onboarding.js` — the "Pick a starting roadmap"/"Switch
+your starter roadmap" screen — not on `dashboard.js` at all.** It was tried on the
+dashboard first (rendered inside the header, above the roadmap hero) but that still read
+as belonging to whichever roadmap happened to be active, since the dashboard *is*
+per-roadmap. Since Daily Todos data is genuinely global to the user (never touched by
+which roadmap is active, or by starting/switching/hiding one), it now renders on the one
+screen that is itself roadmap-agnostic — right after the page heading, above the
+template grid. `main.js`'s `guardApp` already threads `dailyTodoStore` through to every
+route's ctx (originally added for the dashboard instance), so `onboarding.js` picking it
+up needed no wiring change there — just `createDailyTodoPanel(dailyTodoStore)` mounted
+in `renderOnboarding`'s own returned node, with `dailyTodoPanel?._cleanup?.()` added to
+its existing cleanup return alongside `themeToggleBtn._cleanup?.()`. If you ever consider
+moving it again, dashboard.js is specifically the wrong place — it's the roadmap view.
+
+**Cross-roadmap awareness — the header badge, not the editor, on `dashboard.js`.**
+Since a signed-in user spends most of their time on the dashboard rather than the
+onboarding picker, `dashboard.js` re-imports `dailyTodoStore` for exactly one purpose: a
+small pill (`.daily-todo-nav-badge`, next to the theme toggle) showing the soonest active
+todo's live countdown (`"⏱ 46m left"`, or `"⏱ 46m left · 3 due"` once more than one is
+active), reusing the same `isExpired`/`remainingMs`/`formatRemaining`/`remainingBand`
+helpers and the same ok/warn/danger status-color families the todo list's own countdown
+uses. It's read-only and link-only (`<a href="#/onboarding">`) — no done/delete/edit
+affordance lives here, only in `dailyTodoPanel.js` itself; the one exception is the
+row-level "link a topic to a todo" button below, which only ever *creates* a todo, never
+edits/completes/deletes one. Hidden entirely (`hidden` attribute, not just emptied) when
+there's no active todo. Subscribes to `dailyTodoStore` and ticks its own 30s
+`setInterval` (matching `dailyTodoPanel.js`'s own cadence), both cleaned up in
+`renderDashboard`'s existing route-cleanup return — same "Component subscription
+cleanup" rule (root `CLAUDE.md`) as everything else with a subscription or timer.
+
+**Linking a roadmap topic to a Daily Todo, and completing either one from the other
+(issue #56 follow-up).** Every checklist row (`renderItemRow`, `dashboard.js`) has a ⏱
+button, next to Edit, opening `openAddToDailyTodoModal()`
+(`src/ui/components/addToDailyTodoModal.js` — same promise-based `{ ... } | null` contract
+as `openNewRoadmapModal()`) to ask how long you have; the topic's own title comes
+pre-filled (and editable — the todo doesn't have to be phrased exactly like the topic).
+Confirming calls `dailyTodoStore.addTodo()` with `linkedTemplateId`/`linkedItemId` set to
+the row's `(activeTemplateId, item.id)` pair, plus a `linkedItemTitle` display-time
+snapshot — **never just the topic's title**, since the same title can exist in more than
+one roadmap (the "Marketing Fundamentals" topic in a built-in template and a custom
+roadmap's own topic of the same name are different items) and only the id pair
+disambiguates which one a given todo actually points at.
+
+Completing that side of the link is where the real complexity lives, entirely in
+`dailyTodoPanel.js`'s `handleToggleDone()` and `roadmapStore.setItemDoneInTemplate()`:
+- **Checking** a linked todo (issue #56's original ask) asks for confirmation first
+  (`confirmDialog`, non-danger, naming the target roadmap: `"This will also mark this
+  topic done in <Roadmap Name>."`) — a cross-cutting side effect on data the user isn't
+  necessarily looking at deserves an explicit heads-up, same reasoning as any other
+  consequential confirmDialog in this app. Cancelling resets the checkbox's visual state
+  (the browser already flipped it before the handler ran) and touches nothing.
+- **Unchecking** a completed linked todo syncs back silently, no confirmation — this is
+  the safe, reversible direction, consistent with how every other done/not-done toggle
+  in the app already works.
+- Either direction calls `roadmapStore.setItemDoneInTemplate(templateId, itemId, done)`
+  — new, and the one genuinely new piece of surface area in `roadmapStore.js` for this
+  feature: it marks an item done/not-done in **any** template, not just the one currently
+  active, without ever silently switching the user's active roadmap out from under them.
+  Three cases, cheapest first: (1) the target template is already active — delegates to
+  `updateItem()` with the extra `completedViaTodoAt` bookkeeping folded into the same
+  patch, so the row's badge (below) gets its `structuralVersion` re-render for free, same
+  precedent as the `notes` field; (2) the target template is cached (visited this
+  session, just not on screen right now) — patches `roadmapCache` in place and persists
+  (local blob + `adapter.saveRoadmap`) directly, touching neither `activeTemplateId` nor
+  `structuralVersion`, since nothing currently rendered needs to change; (3) the target
+  template is cold (never touched this session) — one-shot reads it (Firebase first,
+  local blob fallback), patches, and persists the same way. Resolves `{ ok: false }` if
+  the item can't be found anywhere (its topic, or the whole roadmap, was deleted after
+  the todo was linked to it) — the todo still completes either way (the user's intent to
+  finish *something* should stand even if the link has gone stale), just with a softer
+  warning toast instead of the normal success one.
+- A completed link gets a small ⏱✓ indicator on the topic's own row
+  (`.completed-via-todo-indicator`, tooltip `"Completed via Today's Todo on <date>"`) —
+  a **new, dedicated field** (`item.completedViaTodoAt`), never appended to the topic's
+  own free-text `notes` field, so an auto-generated annotation never mixes with something
+  the user actually typed. Cleared automatically the moment either side is unchecked
+  again — `dashboard.js`'s own checklist-row toggle (`toggleDone()`) clears it when a
+  user unchecks a topic directly (not via the linked todo), and
+  `setItemDoneInTemplate(..., false)` clears it on the todo-driven uncheck path — so the
+  badge can never show a stale completion date on a topic that's since been reset. Note
+  the coupling only ever runs one direction structurally: `dailyTodoStore.js` never
+  imports `roadmapStore.js` (a todo can exist with no roadmap at all); it's
+  `dailyTodoPanel.js`, the UI layer, that's handed both stores and orchestrates between
+  them. Toggling a linked topic's `done` state directly on the dashboard (bypassing the
+  todo) does **not** reach back and flip the linked todo itself — only the
+  `completedViaTodoAt` annotation is kept honest that way, not full bidirectional sync of
+  `done` in both directions; if that's ever needed, it has to be built deliberately, not
+  assumed to already exist.
+
+**Undoing a linked todo before it's completed, and a soft-delete edge case (issue #56
+follow-up).** The ✕ delete button (`handleDelete` in `dailyTodoPanel.js`) is available on
+every todo regardless of state — active, done, or missed — not just done/missed as
+originally built. This is deliberately how you "undo" a topic linked by mistake: deleting
+an **active** linked todo never calls `roadmapStore.setItemDoneInTemplate` at all (only
+completing one does), and the confirm dialog's message says so explicitly
+("...The linked roadmap topic is untouched either way.") rather than leaving that
+implicit. `setItemDoneInTemplate` also treats a soft-deleted item
+(`item.deleted === true`, set by `removeItem()` — the item is still physically present in
+the map, just never rendered again) the same as a genuinely missing one in all three of
+its cases (active/cached/cold), resolving `{ ok: false }` instead of silently "succeeding"
+against a topic the user can no longer see or interact with — without this, completing a
+linked todo whose source topic had been deleted would report success with zero visible
+effect.
+
+**Storage adapter abstraction (`src/services/storage/`, issue #5, part 1).**
+`roadmapStore.js` never imports `firebase.js` directly for roadmap/meta reads and
+writes — it calls whichever adapter `getStorageAdapter(user)` (`adapterFactory.js`)
+returns for the *currently signed-in user*. Today that's always `firebaseAdapter`: this
+is a deliberate single seam (not dead abstraction) so a future second backend would only
+mean adding a branch inside `adapterFactory.js`, never touching `roadmapStore.js` or any
+feature built on top of it. `StorageAdapter` is the base contract (required:
+`listenRoadmap`/`saveRoadmap`/`getRoadmap`/`deleteRoadmap`/`getMeta`/`saveMeta`, all
+`(uid, templateId, ...)`-shaped; optional with safe defaults: `getLegacyRoadmap` —
+Firebase-only migration data —, `now()` — the adapter's own write-timestamp
+representation —, and `destroy()`). `listenRoadmap`'s callback receives the plain
+roadmap payload (or `null`) — **never** a backend-specific wrapper: `attachRoadmapListener`
+used to call `snapshot.exists()`/`snapshot.val()` directly on whatever the callback
+received, leaking Firebase's `DataSnapshot` shape through what was meant to be a generic
+interface. Fixed by having `FirebaseAdapter.listenRoadmap` unwrap its own snapshot
+internally before invoking the callback. This interface is shaped around what
+`roadmapStore.js` actually calls (multi-user, multi-template, plus a separate `meta`
+document), not a naive single-roadmap MVP shape — see `docs/architecture.md` §5.12 for
+why.
+
+`FirebaseAdapter` carries `dbApi`'s exact former logic with no behavior change. Since
+which backend applies is resolved per sign-in (not a fixed, once-per-app-load choice),
+`roadmapStore.js`'s `adapter` binding is a `let` reassigned via
+`getStorageAdapter(nextUser)` at the top of every `setUser()` call, not a `const` fixed
+once at store creation. `LocalStorageAdapter` is a complete, unit-tested implementation
+of the same contract over its own dedicated keys, but is **not yet wired into
+`roadmapStore.js`** — scaffolding for a later PR (true guest-only local mode, or an
+explicit offline-cache adapter), not forgotten work.
+
+**Google Sign-In / Google Drive sync was tried and dropped, not forgotten.** Issue #5
+originally planned a `GoogleDriveAdapter` (part 2) and a full "Sign in with Google" flow
+(part 3) as an opt-in second backend. Part 2 merged but was always unreachable in
+production (no UI ever created a Google-authenticated user); part 3 (the actual
+sign-in UI/OAuth wiring) never merged. After two days spent chasing real-world OAuth
+issues (popup timing, CSP, GIS silent refresh), the decision was made that it wasn't
+worth the ongoing cost right now — both were removed entirely (code, tests, docs) and
+issues #5/#71 were closed. Firebase is the only backend and the only sign-in method.
+If Google Drive sync is revisited later, `adapterFactory.js`'s single seam is exactly
+what a new adapter would plug into — this was not undone.
+
+**Starter templates and onboarding (`src/data/templates/`, `src/ui/pages/onboarding.js`)**
+— Issue #51. `src/data/templates/index.js` is the template registry (`TEMPLATES`,
+`getTemplate(id)`, `buildSeedItems(id)`, `getTemplatePhases(id)`); every registered
+template module (`java-backend.js`, `frontend.js`, `data-science.js`,
+`genai-agentic-ai.js`, `math-grade12.js`, `piano.js`, `marketing.js` — 7 total) exports
+its own `PHASES` + `buildSeedItems()` in the same shape as the original `roadmap.js`.
+(`blank.js` is no longer one of the 7 — see "'blank' template retirement" below for why it
+was retired; the file itself stays in the repo, migration-only.) Templates are loaded
+via dynamic `import()` so a signed-out visitor's sign-in page never downloads roadmap
+content for templates they haven't picked. `roadmapStore.js`'s `setUser(user)` is
+**async**: on every sign-in it does a one-time `dbApi.getMeta` read to decide
+`onboardingDone`/`activeTemplateId`/`startedTemplateIds` — `meta.startedTemplateIds`
+wins if present (issue #58's per-template shape); otherwise it falls back through legacy
+detection (see the multi-roadmap paragraph below) and backfills the new meta shape with
+no forced migration step. Only when `onboardingDone` is false does `main.js` route to
+`/onboarding`; picking a card there calls `store.switchRoadmap(templateId)`, which (since
+issue #58) seeds a not-yet-started template or loads an already-started one, marks
+onboarding done, and starts syncing — never destroying any other template's progress.
+Always await `store.setUser(...)` before making a routing decision on its result — the
+onboarding-vs-`/app` redirect in `main.js` depends on this resolving first.
+`dashboard.js`'s `groupItems()` takes `store.getSnapshot().phases` instead of a
+hardcoded import specifically so a template (or custom roadmap) whose phases have zero
+items still renders a phase-card for each one; do not revert it to a static import.
+A "Switch template" link in the dashboard header re-enters `/onboarding` at any time —
+reached this way (`onboardingDone` already `true`), the page shows a "← Back to my
+roadmap" link; since issue #58, picking any card there is non-destructive (no
+confirmation dialog), because switching only ever loads or seeds that template's own
+data, never touching another template's. First-time onboarding (`onboardingDone === false`)
+shows no back link either, since there's nothing to switch away from yet.
+
+**Multi-roadmap support — concurrent progress per template (`roadmapStore.js`, issue #58).**
+Each template a user has started gets its own Firebase node,
+`users/{uid}/roadmaps/{templateId}` (`version`/`updatedAt`/`templateId`/`items`), tracked
+in `users/{uid}/meta.startedTemplateIds` (array) with `meta.activeTemplateId` naming the
+one currently displayed. The store replaces the old single `items`/`templateId` trio with
+`activeTemplateId`, `startedTemplateIds`, and an in-memory `roadmapCache` (keyed by
+templateId) that makes switching back to an already-visited template instant — no network
+read — within the same session; switching to a template not yet visited this session
+still reads Firebase/local storage first (cache-first, not cache-only). Locally,
+`KEYS.ROADMAPS` (`ascent-roadmaps-v1`) replaces the old single `KEYS.ROADMAP` blob with a
+`{ [templateId]: { version, dirty, items } }` shape; `KEYS.TEMPLATE_ID` now means the
+*active* template id. `switchRoadmap(templateId)` (replacing `initFromTemplate`) handles
+both first-time picks and later switches with the same logic: a not-yet-started template
+seeds fresh and is appended to `startedTemplateIds`; an already-started one is loaded
+(cache → Firebase → local blob → seed, in that order) and never re-seeded. **Only one
+Firebase listener is open at a time** (switching detaches the old one and attaches a new
+one on the newly active template's path) — keeping listeners open for every started
+template concurrently is an explicit non-goal for this issue, not an oversight. The old
+singular `users/{uid}/roadmap` path is never written to again post-migration — it's a
+read-only safety net; `setUser` migrates a legacy account (one lacking
+`meta.startedTemplateIds`) by copying that path forward into
+`users/{uid}/roadmaps/{templateId}` and writing the new meta shape, the first time such
+an account signs in after this shipped.
+
+**Manual roadmap creation — `croadmap-...` ids (`roadmapStore.js`, issue #4).** A
+user can build their own roadmap from scratch via "Create your own roadmap" (the first
+card in `/onboarding`'s grid, opening `src/ui/components/newRoadmapModal.js`) instead of
+picking a built-in template. `createCustomRoadmap({ title, description })` generates an
+id in the shape `croadmap-<timestamp>-<random>` — `isCustomRoadmapId(id)` (exported from
+the store) is the *only* thing anywhere in the codebase that distinguishes a custom
+roadmap from a built-in template id, and it's deliberately a different prefix than
+`addItem()`'s `custom-` item ids (a different id namespace entirely — item.id, not
+templateId — but a shared prefix would be a confusing coincidence to debug). A custom
+roadmap's metadata (`{ id, title, description, createdAt }`) lives in a new `customRoadmaps`
+array (`users/{uid}/meta.customRoadmaps`, plus a local `KEYS.CUSTOM_ROADMAPS` fallback) —
+separate from `startedTemplateIds`, which a custom roadmap's id is *also* added to, so it
+flows through the exact same `switchRoadmap`/`roadmapCache`/Firebase-per-path machinery
+issue #58 built for built-in templates. The one structural difference: a built-in
+template's `phases` skeleton is fixed content from its template module and is never
+persisted (the store just re-derives it from `getTemplatePhases()` every time), but a
+custom roadmap has no template module — its `phases` (with generated `phase-...`/
+`section-...` ids, so they can be renamed/deleted unambiguously by id rather than by
+title) are the *only* record of what the user built, and get persisted/resolved through
+the exact same cache → Firebase → local-blob → seed path as `items` (see
+`resolveRoadmapItems`), and folded into the same echo/structural-version comparison in
+`attachRoadmapListener` (comparing `{ items, phases }` together, not `items` alone) so a
+custom roadmap's user-added structure gets the same echo-guard and multi-device sync
+guarantees `items` already had. `addPhase`/`renamePhase`/`removePhase`/`addSection`/
+`renameSection`/`removeSection` are silent no-ops when `activeTemplateId` isn't a custom
+id — a built-in template's phase/section skeleton is fixed, never user-editable.
+Renaming a phase or section re-files every item under it to the new title (so they don't
+become orphaned); removing one soft-deletes every item under it (there's no phase/section
+left for them to render under). `dashboard.js` only renders the "+ Add phase"/"+ Add
+section"/rename/delete controls when `store.isCustomRoadmapId(activeTemplateId)` is true.
+`deleteCustomRoadmap(id)` permanently removes a custom roadmap (Firebase node + local
+blob + meta entry) — never usable on a built-in template id, which can only ever be
+hidden (see "Per-user hidden templates" below), never deleted. If it's the currently active roadmap,
+it switches to the default built-in template (`java-backend`) first so the app is never
+left without an active roadmap.
+
+**Onboarding card affordances — the delete button must never look like the hide
+button (issue #61).** A custom/imported roadmap card's `×` (`buildCustomCard`,
+`onboarding.js`) permanently deletes the roadmap; a built-in template card's `×`
+(`buildCard`) only hides it, a reversible per-user preference. They used to share the
+same `template-card-hide` class and neutral glyph, so the difference was invisible
+until after the click, when the `confirmDialog` copy finally said so. The custom card's
+button now has its own `template-card-delete` class (`app.css`) — a trash icon (🗑),
+styled with the existing `--danger`/`--danger-border` tokens at rest, not just on
+hover — so the destructive affordance signals up front. Never restyle
+`template-card-delete` to look neutral, and never give the built-in hide button
+danger styling — the whole point is that a user can tell them apart at a glance.
+Also, every custom/imported roadmap card used to render the identical generic `✎`
+regardless of title, unlike a built-in template's unique per-topic icon (`template.icon`).
+`pickCustomRoadmapIcon(id)` (`src/ui/utils/customRoadmapIcon.js`, pure, dependency-free)
+derives a stable icon from a hash of the roadmap's id — same id always yields the same
+icon, across sessions and devices, with no new UI and no `customRoadmaps` schema
+change. If a real icon-picker UI is ever built, this hash-based default is what an
+unset `icon` field should fall back to, not a re-introduced fixed glyph.
+
+**AI-assisted roadmap import (`src/data/importPrompt.js`, `src/core/roadmap/`, issue
+#4).** A second entry point next to "Create your own roadmap" — "Import roadmap"
+(`src/ui/components/importRoadmapModal.js`) opens a modal instead of an empty roadmap.
+Issue #64 collapsed the original two-tab "Generate with AI" / "Paste & Import" layout
+into **one continuous, top-to-bottom flow** — every real use of this feature does both
+halves in the same sitting, so a second tab just hid the paste box behind an extra
+click. From top to bottom: a topic field, a read-only versioned prompt block
+(`buildImportPrompt(topic, options)`, `IMPORT_PROMPT_VERSION`) with an editable topic
+line that live-updates the prompt, a "Copy prompt" button
+(`navigator.clipboard.writeText`, falling back to a hidden-textarea +
+`execCommand('copy')` for older/non-secure contexts), then the paste textarea itself,
+validated 300ms after each keystroke via `validateImportText()`
+(`src/core/roadmap/importValidator.js`) — a **pure** function
+(no DOM, no store, no Firebase) that parses the JSON and checks it against schema
+version 1 (`SUPPORTED_SCHEMA_VERSION`): `schemaVersion === 1`, non-empty `title`,
+non-empty `phases` array where every phase has a `title`/`priority ∈ {P0-P3}`/non-empty
+`sections` array, every section has a `title`/non-empty `items` array, every item is
+either a plain string (inherits the phase's priority) or a `["title","priority"]` tuple,
+and the total item count is ≤ 500 — returning an array of per-field error strings
+(`phases[i].sections[j].items[k] is invalid`, etc.), empty meaning valid. Only once
+valid does `adaptImportToRoadmap()` (`src/core/roadmap/schemaAdapter.js`) — equally
+pure — convert the validated data into the exact `{ phases, items }` shape a custom
+roadmap needs (generating `phase-...`/`section-...`/`custom-...` ids the same way
+`addPhase`/`addSection`/`addItem` do), and the "Import roadmap" button enables. The
+validator and adapter are deliberately two separate pure modules: bumping the import
+wire format to a future schema version means adding a new adapter function, never
+touching the validator's rules or the other way around. The modal resolves
+`{ title, phases, items } | null` — the caller (`onboarding.js`'s `handleImport()`)
+passes it straight to `store.createCustomRoadmap({ title, phases, items })`, the exact
+same function the manual "Create your own roadmap" flow calls (just with the `phases`/
+`items` arguments populated instead of omitted). `roadmapStore.js` makes this work via a
+one-shot `pendingCustomSeeds` map: `createCustomRoadmap` stashes the seed keyed by the
+freshly generated id right before calling `switchRoadmap(id)`, and `fetchTemplateData`
+consumes (and deletes) it instead of returning the usual empty seed for a custom id — a
+manually-created roadmap simply has no entry there and falls through to the empty seed
+unchanged. From that point on an imported roadmap is indistinguishable from a manually
+built one — same Firebase path, same phase/section rename/delete controls, same
+`deleteCustomRoadmap` cleanup.
+
+**Prompt customization inputs (issue #64 Part 2).** Below the topic field, the generate
+section renders four optional inputs — Experience level (Beginner/Intermediate/Advanced,
+a chip group reusing `.filter-chip` styling), Target timeframe (No deadline/1 month/
+3 months/6 months/1 year, the same chip pattern), Goal/context (a `<select>`: Interview
+prep/On-the-job upskilling/Academic or exam prep/Personal project or hobby), and a
+freeform "Already know" text input — each feeding `buildImportPrompt(topic, options)`'s
+`options` param. Every field is optional (topic remains the only required input) and
+each appends exactly one line to the prompt's free-text instructions block when set
+(`Experience level: …`, etc.), omitted entirely when unset/blank — never an empty or
+placeholder line, matching how the topic line's own placeholder already worked. This is
+deliberately additive to the *instructions*, never the JSON schema contract above them
+in `importPrompt.js` — `importValidator.js`/`schemaAdapter.js` needed zero changes, and
+this required no `IMPORT_PROMPT_VERSION` bump, so a prompt copied before this existed
+still parses identically today. If you add a fifth customization field, follow the same
+pattern: one optional input, one omitted-when-unset line in `buildOptionLines()`
+(`src/data/importPrompt.js`), never a change to the schema block itself.
+
+**Flush-before-switch — an edit made just before switching must never be silently
+dropped or attributed to the wrong template.** Because `flush()` always saves whatever
+`items`/`activeTemplateId` are current *at the moment it actually runs* (not captured at
+`queueSave()` time), a debounced save queued against the outgoing template that fires
+*after* `switchRoadmap()` has already reassigned those variables would otherwise save the
+new template's data (redundant, harmless) while never flushing the outgoing template's
+real edit to its own path. `switchRoadmap()` checks `dirty` for the outgoing template
+and, if set, cancels the pending timer and `await`s `flush()` **before** reassigning
+`activeTemplateId` — see the "flush-before-switch" describe block in
+`tests/integration/roadmapStore.test.js`. If you ever add another path that can change
+`activeTemplateId`, it must do the same.
+
+**Stale-listener guard replaces the old #51 cross-template payload tag.** Since each
+template now has its own Firebase path, `attachRoadmapListener(templateId)`'s `onValue`
+callback closes over the `templateId` it was attached for and drops any invocation once
+that no longer matches the current `activeTemplateId` — structurally stronger than
+comparing a `remote.templateId` payload tag (the old #51 fix, no longer needed for this
+purpose), since it can't be fooled by a callback that was already queued before `off()`
+took effect. See the "stale listener guard" describe block in
+`tests/integration/roadmapStore.test.js`.
+
+**Per-user hidden templates — `hiddenTemplateIds`.** Every built-in template card has a
+hide (×) button (no exceptions, since issue #4 follow-up retired "blank" — the one card
+that used to be exempt); clicking it (after a `confirm()`) calls `store.hideTemplate(id)`,
+which appends to `hiddenTemplateIds` and persists it to `users/{uid}/meta/hiddenTemplateIds`
+(plus a local fallback) — **this is a per-user preference, never a deletion of the
+template or a change visible to any other user.** `getTemplate`/`buildSeedItems`/
+`getTemplatePhases` never consult it; it only filters which cards `onboarding.js`
+renders. A "Show hidden templates (N)" toggle reveals hidden cards with a "Restore"
+button (`store.unhideTemplate(id)`) instead of the normal pick/hide affordances.
+"Create your own roadmap" (never hideable — it's an action card, not a pickable
+template) carries a corner ℹ info button instead, opening the "build your own" guide
+(`src/ui/components/buildYourOwnGuide.js`) — this is where blank's old info button
+moved to. The guide now covers both real paths: manual (`"+ Add phase"`/`"+ Add
+section"`/`"Add a custom topic…"`) and AI-assisted (an "Open Import roadmap" button that
+closes the guide and calls the same `handleImport()` the "Import roadmap" card uses) —
+do not let it drift back to describing a manual copy-paste-into-an-AI-chat workflow now
+that real automated import exists.
+
+**"blank" template retirement and migration (`roadmapStore.js`, `src/data/templates/`,
+issue #4 follow-up).** Once manual roadmap creation (CRUD, above) and AI-assisted import
+(above) both existed, the "Start blank" built-in template — four fixed, uneditable
+Learn/Practice/Build/Review phases, exactly one per account, never hideable — became a
+strict subset of "Create your own roadmap": a custom roadmap can do everything blank
+could and is fully editable besides. It was removed from `TEMPLATES` accordingly.
+`blank.js` itself is untouched and still directly importable (via a new migration-only
+export, `getLegacyBlankTemplateData()`) — only its entry in the `TEMPLATES` array is
+gone, so `getTemplate('blank')`/`buildSeedItems('blank')`/`getTemplatePhases('blank')`
+now fall back to `TEMPLATES[0]` for it like any other unrecognized id. Anyone who
+already started "blank" is migrated forward automatically on their next `setUser()` —
+before `fetchTemplateData(activeTemplateId)` would otherwise be called with the now-
+meaningless `'blank'` id — into a real custom roadmap (`croadmap-...` id, titled "My
+roadmap"): reads whatever is actually stored at `users/{uid}/roadmaps/blank` (Firebase
+first, then the local blob), falling back to `getLegacyBlankTemplateData()`'s fixed
+phases/empty seed only for whichever half (items or phases) is missing — pre-PR-#60
+accounts never had `phases` persisted at all. `activeTemplateId`/`startedTemplateIds`
+are swapped to point at the new id and the corrected meta is saved to Firebase in the
+same pass, so the account is never re-migrated (or duplicated) on a later sign-in. The
+old `users/{uid}/roadmaps/blank` node is never deleted — same never-delete-just-
+stop-reading precedent as every other legacy path in this file. See the
+"blank-template migration" describe block in `tests/integration/roadmapStore.test.js`.
+
+**`setUser`/`switchRoadmap` stale-call guard — `stateCallId`.** Firebase's
+`onAuthStateChanged` can fire in quick succession (e.g. delete-account immediately
+followed by a fresh sign-up with the same email), and a user can also switch templates
+while a sign-in is still resolving. Because both functions do one or more `await`s
+before mutating store state, an older call can still be in flight when a newer one
+finishes — without a guard, the older call would resolve later and clobber the newer,
+correct state with stale data. `roadmapStore.js` captures a `stateCallId` snapshot at
+the top of each call and checks it's still current after every `await`; if a newer call
+has already started, the older one aborts without touching `items`/`activeTemplateId`/
+`startedTemplateIds`/`onboardingDone`. Any new `await` added to either function must be
+followed by the same staleness check before it mutates state.
+
+**`structuralVersion` — do not regress this.** It exists specifically to fix a checklist
+flicker bug: toggling `done` on an item does *not* bump `structuralVersion` (see
+`updateItem` in `roadmapStore.js`), because a done-toggle never changes which items are
+visible or how they're grouped. `dashboard.js`'s `handleSnapshot` only runs the full
+`render()` (which tears down and rebuilds every phase-card) when `structuralVersion`
+changes; otherwise it calls the lightweight `patchDoneStates()`, which patches stats and
+the affected row's classes in place. If you add a new mutation that changes the *set or
+shape* of items (add/remove/reorder/edit fields other than `done`), bump
+`structuralVersion` for it. If you add a mutation that's purely cosmetic on an existing
+row, don't — and prefer extending `patchDoneStates()` over adding more full re-renders.
+
+**Personal notes per topic — `item.notes` (issue #15).** Every item may carry a plain-text
+`notes` field, capped at 5,000 characters; a missing field and `''` both mean "no notes"
+(backward compat — seed items are never retrofitted with `notes: ''`, the same precedent
+as `resources`). A `notes` patch is **not cosmetic** — it bumps `structuralVersion` (see
+above) because the row's notes indicator badge needs to re-render. Never add `'notes'` to
+`updateItem`'s cosmetic-check. `itemPanel.js`'s Notes textarea autosaves independently of
+the title/priority/resources "Save changes" button — an 800ms-debounced call to `onSave`
+with just `{ notes }` — and flushes any pending save synchronously on close so an edit
+made in the narrow window before the debounce fires is never lost. `dashboard.js` renders
+a `data-action="notes"` 📝 indicator on a row only when `item.notes` is non-empty,
+following the same click-guard (`e.stopPropagation()`) convention (root `CLAUDE.md`) as
+the resource badge.
+
+**Watch the Firebase echo.** `dbApi.listenRoadmap`'s `onValue` callback fires on every
+write to the path, *including the echo of writes this client just made* (every debounced
+save round-trips back through the listener ~500ms-1s after a click). It must not bump
+`structuralVersion` on that echo — `roadmapStore.js` compares the incoming remote
+`{ items, phases }` pair against the current in-memory one with a key-order-independent
+`stableStringify` (Realtime Database returns keys sorted; our in-memory map is
+insertion-order, so a plain `JSON.stringify` compare produces false positives) and only
+bumps when they actually differ. `phases` is folded into this same comparison (issue #4)
+rather than checked separately, so a custom roadmap's user-added phases/sections get the
+identical echo-guard and multi-device sync behavior `items` already had — for a built-in
+template `phases` never differs, so this is a no-op there. If this comparison is ever
+removed or replaced with an unconditional bump, the
+checklist flicker comes back — it'll just be delayed by a save round-trip instead of
+happening immediately on click, which makes it easy to miss in casual testing.
+
+**Never apply a remote snapshot while a local edit is still unflushed (issue #58
+hardening).** `attachRoadmapListener`'s callback returns immediately, without touching
+`items`, whenever `dirty` is `true` — a queued-or-in-flight local edit is provably newer
+than anything the listener can be echoing, whether that's a delayed echo of an older
+write of ours or a genuine external update. This exists because Firebase's echoed
+payload does not always byte-for-byte match what we computed before sending (its own
+normalization), so string-matching an echo against what we last flushed cannot be
+trusted as the sole defense — a delayed echo of an *older* write of ours could otherwise
+fail to match and get misapplied as "genuinely different, newer" data, silently
+reverting an edit made in the narrow window before it flushed. Found via real E2E
+testing against live Firebase (not caught by the mocked unit/integration suite, which
+can't reproduce genuine network-timing non-determinism) — reproduced most easily by
+switching to a template that hasn't been started yet and immediately checking an item,
+since seeding + first flush + first listener attach all happen in that same narrow
+window. Also keeps a small bounded history of recently-flushed content strings
+(`recentFlushedStrs`, not just the single latest one) so an out-of-order echo of an
+*already-confirmed* older flush (arriving once `dirty` is back to `false`) is still
+recognized as our own and doesn't cause a spurious `structuralVersion` bump. See the
+"out-of-order echo guard" describe block in `tests/integration/roadmapStore.test.js`.
+The same hazard existed on the initial-load path too (issue #67): `resolveRoadmapItems`
+used to prefer a successful remote read over the local blob unconditionally, so a page
+reload that beat the debounced `flush()` could let a stale remote snapshot silently
+overwrite a dirty (not-yet-confirmed) local edit. It now checks `localBlob.dirty` before
+ever attempting a remote read — see the "resolveRoadmapItems — dirty local blob outranks
+stale remote" describe block in the same test file.
+
+**Sign-out contract — never load one user's localStorage into another user's session.**
+`roadmapStore.js`'s `setUser(nextUser)` detects when the active uid changes (sign-out,
+sign-in as a different user). Whenever `uid` transitions from a non-null value to any
+other value, it calls `clearLocal()` (removes `LOCAL_KEY`, the keyed `KEYS.ROADMAPS`
+blob, and `UI_KEY`, among other per-user keys) and resets in-memory `items` to
+`buildSeedItems()` before the incoming user's session starts. The incoming user's own
+local data (`readLocalRoadmaps()`, hidden templates, etc.) is only ever read after `uid`
+is updated to the new value. The initial boot call has `uid = null`, so the guard is
+skipped on first load. Do not restructure `setUser` in a way that removes this guard or
+that reads local data before clearing — that would silently re-introduce the privacy leak.
+This same guard also applies to `dailyTodoStore.js` (see "Daily Todos store" above) — see
+`.claude/rules/auth-security.md` for the auth-side half of the sign-out flow.
+
+**Realtime Database rules — no path other than `roadmap`/`roadmaps`/`meta`/`dailyTodos` may be written under `users/{uid}`, and `reports/{uid}` is reserved for issue #9.** `firebase/database.rules.json` has a `$other: { ".validate": "false" }` catch-all under `users/$uid` specifically to stop a buggy or malicious client from writing arbitrary data outside the known shape (still auth-scoped to that uid, just unbounded before this). If you add a genuinely new top-level field under a user's data, add an explicit `.validate` rule for it — never rely on the `$other` catch-all rejecting it silently as "good enough." Realtime Database rules cannot count a map's children, so a per-roadmap item cap is enforced client-side instead, in `roadmapStore.js`'s `addItem()` (the one place items are created) — it returns `false` instead of mutating anything once a roadmap already holds 800 non-deleted items (lowered from 1,000 in issue #53 — no real roadmap organically approaches even 800 topics); callers must check this return value and surface an error rather than assuming success. The same client-side-cap pattern applies to `dailyTodoStore.js`'s `addTodo()` (issue #56) — active (not-done, not-expired) todos are capped at `MAX_ACTIVE_TODOS` (20).
+
+**Client-side length caps on title/resource fields (`src/core/roadmap/limits.js`, issue #53) — the client-side half of issue #24's server-side Firebase rules.** `MAX_TITLE_LENGTH` (200), `MAX_RESOURCE_LABEL_LENGTH` (120), and `MAX_RESOURCE_URL_LENGTH` (2048) live in their own dependency-free module — never define these constants directly in `roadmapStore.js`, since `itemPanel.js` needs to import just the numbers without pulling in `roadmapStore.js`'s Firebase-backed storage-adapter chain (`adapterFactory.js` → `FirebaseAdapter.js` → `firebase.js`'s `https://` SDK imports), which breaks under Node's ESM loader in any test that doesn't mock `firebase.js`. `roadmapStore.js`'s `addItem()`, `updateItem()`, `addResource()`, and `updateResource()` — the only places these fields are ever written — reject (returning `false`, mutating nothing) a value over these caps; callers must check the return value, same convention as the item-count cap above. `itemPanel.js`'s Save/Add-resource handlers and `dashboard.js`'s quick-add row surface a friendly message using the same constants before the store call is even attempted — always keep the UI-layer message and the store-layer cap using the same imported constant, never a hardcoded number in either place.

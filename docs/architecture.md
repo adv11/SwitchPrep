@@ -1735,3 +1735,24 @@ instructions block when set, omitted entirely when unset. This only changes the
 instructions block, never the versioned JSON schema contract in the same file, so
 `IMPORT_PROMPT_VERSION` did not need to bump and `importValidator.js`/`schemaAdapter.js`
 were untouched.
+
+### 2026-07-09 — PR TBD — Agent memory architecture overhaul (issue #86)
+
+Root `CLAUDE.md` had grown from 724 to 10,510 words / 852 lines in 5 days across 44
+commits — over 4x Anthropic's ~200-line guidance for a file loaded in full on every
+Claude Code session regardless of task. Measured and verified-against-current-docs
+findings, plus the resulting restructuring, are recorded in
+`docs/adr/ADR-007-agent-memory-architecture.md` — summary: content was relocated
+(not revised) out of root `CLAUDE.md` into three new path-scoped `.claude/rules/*.md`
+files (`roadmap-store.md`, `ui-styling.md`, `auth-security.md`, using the YAML `paths:`
+frontmatter format Claude Code actually loads conditionally) and six new
+`.claude/skills/*/SKILL.md` procedures (`raise-issue`, `start-issue`, `open-pr`,
+`after-merge`, `parallel-work`, `verify-changes`), which load lazily rather than
+unconditionally. The six pre-existing `.claude/rules/*.json` files (added in issues #3/#43)
+were deleted — they used plain JSON, a format Claude Code never actually read, and a
+full-repo grep confirmed nothing referenced them. `AGENTS.md` was collapsed from a
+~9,500-word full duplicate to a short pointer, since Claude Code never reads `AGENTS.md`
+in the first place. A new CI step (`.github/workflows/ci.yml`, `pr-checklist` job) fails
+a PR if root `CLAUDE.md` exceeds 220 lines, so the same unbounded growth pattern can't
+silently recur. Root `CLAUDE.md` is now ~216 lines / ~2,030 words — no application
+source, test, or Firebase-rules code changed as part of this.

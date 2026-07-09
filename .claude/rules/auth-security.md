@@ -1,0 +1,42 @@
+---
+paths:
+  - "src/services/firebase.js"
+  - "src/services/authCleanup.js"
+  - "src/services/accountGuards.js"
+  - "src/ui/pages/signIn.js"
+  - "src/ui/pages/signUp.js"
+  - "src/ui/utils/password.js"
+  - "index.html"
+  - "firebase/database.rules.json"
+---
+
+# Auth, CSP/SRI, and security-critical ordering
+
+Relocated from `CLAUDE.md` (issue #86) with no content changes — see
+`docs/adr/ADR-007-agent-memory-architecture.md`. Several of these are ordering
+requirements (delete data before deleting the Auth record, etc.) where getting the
+sequence backwards silently orphans data or blocks cleanup — read carefully before
+touching auth flows.
+
+**SRI + CSP — mandatory when loading CDN scripts.** `index.html` locks the three Firebase
+SDK modules with `<link rel="modulepreload" integrity="sha384-...">` Subresource Integrity
+hashes. When upgrading the Firebase SDK version, four things must change in lockstep:
+(1) all three import URLs in `src/services/firebase.js`, (2) all three `href` attributes
+in the `<link rel="modulepreload">` tags, (3) all three `integrity` attributes in those
+same tags, (4) the hash table in `docs/adr/ADR-002-csp-sri-security.md`. Missing any one
+of these will cause a hash mismatch and the app will fail to boot. Regenerate hashes with:
+`curl -s <url> | openssl dgst -sha384 -binary | base64`. The Content Security Policy
+in `index.html` must stay consistent with any new CDN domains added; update both the CSP
+meta tag and the `firebase.json` hosting headers.
+
+**Password utility module — `src/ui/utils/password.js`.** Two shared exports used by both auth pages:
+- `scorePassword(s)` — pure function returning 0–4. 0 means empty or < 6 chars; 1 = base (≥6 chars), +1 each for ≥8 chars, ≥12 chars, mixed case, digit, special character (capped at 4). No external library — do not replace with a dependency.
+- `makePasswordToggle(input)` — factory that creates an absolutely-positioned `<button class="password-toggle">` that toggles `input.type` between `'password'` and `'text'` and updates `aria-label` to "Show password" / "Hide password". Caller must wrap the input in a `<div class="field-input-wrap">` (CSS `position: relative; display: grid;`) — the `.field-input` inside automatically gets `padding-right: 52px` via the cascade.
+
+**Password reset uses Firebase's default action URL (Option A).** `authApi.sendResetEmail(email)` calls `sendPasswordResetEmail(auth, email)` and relies on Firebase's hosted action page for the "Set new password" form — no custom reset-confirm route exists in-app. Do not implement a custom reset form (`#/reset-password?oobCode=...`) unless explicitly requested. The sign-in page manages the reset request inline (same card, no route navigation) by swapping `bodySlot` content and updating `titleEl`/`subtitleEl` from the `authShell` return value. The success state deliberately shows the same UI regardless of whether the email belongs to an existing account — this prevents account-existence enumeration.
+
+**Account deletion must delete `users/{uid}` from Realtime Database before calling `deleteUser()`.** Reversing this order leaves orphaned data in the database — once the Auth record is gone, the security rules block cleanup because there is no longer an authenticated user. `authApi.deleteAccount(password)` re-authenticates first (`reauthenticateWithCredential`) to obtain a fresh token before the deletion. If Firebase throws `auth/requires-recent-login`, surface the error message from `authErrorMessage` (already mapped) rather than attempting deletion. Never auto-delete without explicit password confirmation from the user.
+
+**Anonymous Firebase Auth users must be explicitly deleted when they exit without linking, to prevent orphaned data (issue #24).** A guest session's anonymous UID can never be re-authenticated once the session ends, so if it's never linked to a real account (`authApi.linkGuest`), its roadmap data would otherwise sit in the database forever with no way to read, export, or delete it. `authApi.signOut()` (`src/services/firebase.js`) delegates to `signOutWithCleanup()` (`src/services/authCleanup.js` — a pure, dependency-injected function with no Firebase imports, kept separate specifically so it's unit-testable without a real Firebase project) which checks `user.isAnonymous` first: for an unlinked guest it removes `users/{uid}` from the database and then deletes the Auth record (same data-before-Auth-record order as `deleteAccount()`, and for the same reason), instead of a plain sign-out. A linked guest is no longer anonymous by the time they sign out, so that path is unaffected. If the cleanup call throws (e.g. a stale token), it falls back to a plain sign-out — never block the user from leaving the app over a cleanup failure. See `docs/adr/ADR-005-anonymous-user-lifecycle.md`. `signOutWithCleanup()` also triggers `roadmapStore.js`'s and `dailyTodoStore.js`'s sign-out contract (see `.claude/rules/roadmap-store.md`) — the uid transition clears their local data too.
+
+**Realtime Database rules structural constraint.** `firebase/database.rules.json` has a `$other: { ".validate": "false" }` catch-all under `users/$uid` specifically to stop a buggy or malicious client from writing arbitrary data outside the known shape (`roadmap`/`roadmaps`/`meta`/`dailyTodos`; `reports/{uid}` reserved for issue #9) — still auth-scoped to that uid, just unbounded before this. If you add a genuinely new top-level field under a user's data, add an explicit `.validate` rule for it here — never rely on the `$other` catch-all rejecting it silently as "good enough." The client-side enforcement half (item/todo count caps, title/resource length caps) lives in `roadmapStore.js`/`dailyTodoStore.js` — see `.claude/rules/roadmap-store.md`.

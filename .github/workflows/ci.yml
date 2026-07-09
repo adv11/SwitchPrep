@@ -161,3 +161,18 @@ jobs:
             exit 1
           fi
           echo "✅ Architecture doc check passed (new_modules=$NEW_MODULES, arch_changed=$ARCH_CHANGED)"
+
+      - name: Check root CLAUDE.md stays under the line-count budget
+        run: |
+          LINES=$(wc -l < CLAUDE.md | tr -d ' ')
+          LIMIT=220
+
+          if [ "$LINES" -gt "$LIMIT" ]; then
+            echo "❌ CLAUDE.md is $LINES lines, over the $LIMIT-line budget."
+            echo "   Root CLAUDE.md is loaded in full on every Claude Code session — it must stay short."
+            echo "   Move feature/area-specific content to .claude/rules/*.md (loads only when a matching"
+            echo "   file is touched) or a multi-step procedure to .claude/skills/ (loads only on invocation)."
+            echo "   See docs/adr/ADR-007-agent-memory-architecture.md for the full rationale (issue #86)."
+            exit 1
+          fi
+          echo "✅ CLAUDE.md size check passed ($LINES / $LIMIT lines)"
