@@ -930,13 +930,21 @@ export function createRoadmapStore() {
   // than assuming success.
   async function setItemDoneInTemplate(templateId, itemId, done) {
     if (templateId === activeTemplateId) {
+      // A soft-deleted item (removeItem()) still exists in the map — never
+      // rendered again, but present — so without this check updateItem()
+      // would happily "succeed" on it: a linked todo could be completed
+      // against a topic the user can no longer see or interact with,
+      // reporting ok:true for an update with zero visible effect. Treat it
+      // the same as genuinely missing.
+      if (!items[itemId] || items[itemId].deleted) return { ok: false, title: null };
       const patch = { done, completedViaTodoAt: done ? Date.now() : null };
       const ok = updateItem(itemId, patch);
       return { ok, title: ok ? items[itemId].title : null };
     }
 
     const cached = roadmapCache[templateId];
-    if (cached?.items?.[itemId]) {
+    if (cached?.items) {
+      if (!cached.items[itemId] || cached.items[itemId].deleted) return { ok: false, title: null };
       const patchedItem = { ...cached.items[itemId], done, completedViaTodoAt: done ? Date.now() : null, updatedAt: Date.now() };
       const nextItems = { ...cached.items, [itemId]: patchedItem };
       cached.items = nextItems;
@@ -968,7 +976,7 @@ export function createRoadmapStore() {
     }
     const localBlob = readLocalRoadmaps()[templateId];
     const baseItems = remote?.items || localBlob?.items;
-    if (!baseItems?.[itemId]) return { ok: false, title: null };
+    if (!baseItems?.[itemId] || baseItems[itemId].deleted) return { ok: false, title: null };
     const basePhases = normalizeStringArray(remote?.phases) || normalizeStringArray(localBlob?.phases) || [];
     const patchedItem = { ...baseItems[itemId], done, completedViaTodoAt: done ? Date.now() : null, updatedAt: Date.now() };
     const nextItems = { ...baseItems, [itemId]: patchedItem };

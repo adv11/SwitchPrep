@@ -1672,3 +1672,52 @@ directly on the dashboard does not reach back and flip the linked todo — only 
 wanted, it needs to be built on purpose (most likely: `roadmapStore.js` gaining a way to
 notify `dailyTodoStore.js` of a linked-item change, inverting today's one-directional
 `dailyTodoPanel.js → both stores` shape), not assumed to already exist.
+
+### 2026-07-09 — PR #76 (same branch) — Undo for an active linked todo, a soft-delete edge case, and a shared modal-overflow bug (issue #56 follow-up)
+
+Feedback after the linking feature above landed: users had no way to remove a todo they'd
+linked to a roadmap topic by mistake unless they waited for it to finish or expire, since
+delete was originally scoped to done/missed todos only. Reviewed the edge-case space with
+the user before building anything (per their own request) — three things were confirmed
+worth doing now; a fourth (unlink-without-deleting as an alternative to full delete) was
+considered and explicitly not chosen in favor of the simpler "just delete it" behavior,
+matching the rest of the app's existing delete-with-confirm convention rather than adding
+a second, softer action alongside it.
+
+**Delete, unrestricted by state.** `dailyTodoPanel.js`'s `renderRow` no longer gates the
+✕ button behind `todo.done || isExpired(todo)` — every todo gets one. `handleDelete`'s
+confirm message is conditional: for an active, linked todo it adds "The linked roadmap
+topic is untouched either way," since that's the one case where a user might reasonably
+wonder whether deleting reaches back into the roadmap (it doesn't — completing is the
+only path that does). The scope decision (linked-only vs. every active todo) was put to
+the user directly rather than assumed; they chose to extend it to every active todo, not
+just linked ones, for consistency — so a plain, manually-typed todo can now also be
+deleted before it's done or missed, not only ones created via the roadmap-linking flow.
+
+**Soft-deleted item edge case.** `roadmapStore.js`'s `setItemDoneInTemplate` previously
+only checked whether `itemId` was present in the relevant items map — but `removeItem()`
+never actually deletes an item from that map, it just sets `item.deleted = true` (so the
+row stops rendering but the record survives, same precedent as every other soft-delete in
+this file). A linked todo whose topic had been removed this way would "complete
+successfully" with literally nothing visible happening, since the topic no longer renders
+anywhere to show it as done. All three cases (active/cached/cold) now check
+`!items[itemId] || items[itemId].deleted` (or the cached/remote equivalent) and resolve
+`{ ok: false }` for either — the cached-branch check was restructured slightly (checking
+`cached.items` truthiness first, then item existence/deleted state inside) specifically
+so a cached-but-deleted item short-circuits immediately instead of falling through to a
+redundant, wasted Firebase read in the cold-path branch below it.
+
+**Shared modal-overflow bug, found by accident.** Rewriting `dailyTodoGuide.js` to cover
+all of the above (delete-at-any-time, the linking flow, the confirm/no-confirm split, and
+that missed todos never auto-touch the roadmap) made the modal's content taller than a
+typical viewport — and its "Got it" button became genuinely unreachable, not just
+visually cut off: `.modal-overlay`'s `display: flex; align-items: center` clips both ends
+of overflowing content equally in the CSS flexbox spec, and no amount of scrolling
+reaches the clipped portion. This wasn't a `dailyTodoGuide.js`-specific bug — every modal
+in the app (`confirmDialog`, `showDeleteModal`, `buildYourOwnGuide`, both new modals from
+this feature) shares the same `.modal-overlay`/`.modal-card` chrome and was equally
+exposed, just lucky enough not to have hit content long enough to trigger it yet. Fixed
+at the shared CSS level: `align-items: safe center` (centers when content fits, falls
+back to scrollable start-alignment when it doesn't) plus `overflow-y: auto` on
+`.modal-overlay` — one fix, every current and future modal benefits, no per-modal special
+case needed.

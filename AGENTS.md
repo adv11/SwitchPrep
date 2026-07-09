@@ -305,6 +305,21 @@ Completing that side of the link is where the real complexity lives, entirely in
   `done` in both directions; if that's ever needed, it has to be built deliberately, not
   assumed to already exist.
 
+**Undoing a linked todo before it's completed, and a soft-delete edge case (issue #56
+follow-up).** The ✕ delete button (`handleDelete` in `dailyTodoPanel.js`) is available on
+every todo regardless of state — active, done, or missed — not just done/missed as
+originally built. This is deliberately how you "undo" a topic linked by mistake: deleting
+an **active** linked todo never calls `roadmapStore.setItemDoneInTemplate` at all (only
+completing one does), and the confirm dialog's message says so explicitly
+("...The linked roadmap topic is untouched either way.") rather than leaving that
+implicit. `setItemDoneInTemplate` also treats a soft-deleted item
+(`item.deleted === true`, set by `removeItem()` — the item is still physically present in
+the map, just never rendered again) the same as a genuinely missing one in all three of
+its cases (active/cached/cold), resolving `{ ok: false }` instead of silently "succeeding"
+against a topic the user can no longer see or interact with — without this, completing a
+linked todo whose source topic had been deleted would report success with zero visible
+effect.
+
 **Storage adapter abstraction (`src/services/storage/`, issue #5, part 1).**
 `roadmapStore.js` never imports `firebase.js` directly for roadmap/meta reads and
 writes — it calls whichever adapter `getStorageAdapter(user)` (`adapterFactory.js`)
@@ -692,6 +707,8 @@ has no browser chrome of its own to clear a notch). `.dashboard-header`/`.auth-p
 `position: fixed` element needs the same.
 
 **Never use the native `window.confirm()` — use `confirmDialog()` (`src/ui/components/confirmDialog.js`).** The browser's built-in confirm dialog can't be styled, breaks the app's own dark/light theming, and reads as unpolished in a customer-facing product. `confirmDialog({ title, message, confirmText, cancelText, danger })` returns a `Promise<boolean>` and renders the same `.modal-overlay`/`.modal-card` chrome as every other modal in the app (matches `showDeleteModal()` in `dashboard.js` and `openBuildYourOwnGuide()`), with Escape-to-cancel and click-outside-to-cancel built in. Pass `danger: true` for anything destructive/irreversible (delete, sign-out with unsaved changes, replacing a roadmap) to get the red confirm button; leave it `false` for reversible actions (e.g. hiding a template, which can be undone from "Show hidden templates"). Every call site does `if (!await confirmDialog({...})) return;` — same control flow as the old `confirm()`, so there's no excuse to reach for the native one out of convenience. Tests reach the dialog via `document.querySelector('.modal-overlay [data-action="confirm"|"cancel"]')` (Vitest/jsdom) or `page.locator('.modal-overlay[aria-label*="..."] [data-action="confirm"]')` (Playwright) — never via `page.on('dialog', ...)`, which only intercepts the native API this component replaced.
+
+**`.modal-overlay` uses `align-items: safe center`, not plain `center` — never change this back.** Plain `align-items: center` on an overflowing flex container (which `.modal-overlay` is, once any `.modal-card` content is taller than the viewport) clips both the top and bottom of the content equally and makes the clipped parts permanently unreachable by scrolling — a well-known flexbox+overflow trap, not a bug in any one modal's content. Found when `dailyTodoGuide.js`'s content grew long enough to push its "Got it" button below the fold on a short window, with no way to scroll to it (issue #56 follow-up). `align-items: safe center` centers when content fits and falls back to start-aligned (scrollable to both real ends) when it doesn't — combined with `overflow-y: auto` on `.modal-overlay` itself. This fixes every modal in the app that could ever grow tall (confirmDialog, item panel, guide modals), not just the one that surfaced it — if you ever add long-form modal content, you don't need a special case for it.
 
 **Brand mark is a home link on every authenticated/onboarding-adjacent page.** Clicking the "Ascent" logo/wordmark (`createBrandMark()`) always navigates somewhere predictable instead of sitting inert — `<a class="brand" href="#/signin">` on the sign-in/sign-up pages (already existed), and `<a class="brand" href="#/onboarding">` on the dashboard and onboarding pages (`src/ui/pages/dashboard.js`, `src/ui/pages/onboarding.js`), since `/onboarding` is the "all roadmaps" picker — the closest thing this app has to a home/index page. `.brand`'s CSS (`text-decoration: none; color: inherit;`) was already anchor-ready; only the wrapping element needed to change from a plain `<div>` to an `<a>`. Never make the brand mark a dead `<div>` on a page that has a sensible "home" to link to.
 

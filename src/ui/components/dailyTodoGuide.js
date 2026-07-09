@@ -28,15 +28,36 @@ export function openDailyTodoGuide() {
       el('strong', { text: 'red' }),
       ' under 1 hour left.'
     ]),
-    el('h3', { className: 'build-guide-heading', text: 'Done and missed' }),
+    el('h3', { className: 'build-guide-heading', text: 'Done, missed, and delete' }),
     el('p', { className: 'build-guide-body' }, [
       'Check the box to mark something done — it stays visible, struck through. If time runs out first, it moves into the collapsed ',
       el('strong', { text: 'Missed' }),
-      ' section instead of disappearing. Either way, use the ',
+      ' section instead — nothing is checked or changed automatically when a todo expires, so a missed todo simply means you didn\'t get to it in time.'
+    ]),
+    el('p', { className: 'build-guide-body' }, [
+      'The ',
       el('strong', { text: '×' }),
-      ' button next to a done or missed todo to remove it for good once you\'re done with it.'
+      ' button removes a todo for good, at any point — active, done, or missed. Deleting an active todo is how you undo one you added by mistake, without having to wait for it to finish or expire first.'
     ]),
     el('p', { className: 'build-guide-body', text: `You can have up to ${MAX_ACTIVE_TODOS} active (not-done, not-missed) todos at a time.` }),
+    el('h3', { className: 'build-guide-heading', text: 'Linking a todo to a roadmap topic' }),
+    el('p', { className: 'build-guide-body' }, [
+      'Click the ⏱ button on any roadmap checklist row to turn that topic into a todo, keeping a link back to it — the row shows a ',
+      el('strong', { text: 'via <Roadmap>' }),
+      ' tag so you always know where a linked todo came from.'
+    ]),
+    el('p', { className: 'build-guide-body' }, [
+      el('strong', { text: 'Checking' }),
+      ' a linked todo asks you to confirm first, since it also marks the topic done in its own roadmap — even one you\'re not currently viewing. ',
+      el('strong', { text: 'Unchecking' }),
+      ' one syncs back without asking, since undoing a completion is always safe. Deleting an ',
+      el('strong', { text: 'active' }),
+      ' linked todo (before it\'s checked) never touches the roadmap at all — only completing one does.'
+    ]),
+    el('p', {
+      className: 'build-guide-body',
+      text: "A completed topic shows a small ⏱✓ mark next to it, which clears automatically if you (or the linked todo) uncheck it again."
+    }),
     el('div', { className: 'panel-footer-right' }, [
       el('button', { type: 'button', className: 'btn btn-primary', text: 'Got it', onClick: close })
     ])

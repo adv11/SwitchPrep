@@ -513,10 +513,18 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   inset: 0;
   background: rgba(15, 23, 42, 0.55);
   display: flex;
-  align-items: center;
+  /* `safe center` (not plain `center`) so a modal taller than the viewport
+     stays scrollable to its very top and bottom — plain `center` on an
+     overflowing flex container clips both ends equally and makes them
+     unreachable no matter how far you scroll, a well-known flexbox+overflow
+     trap. Found via the Daily Todos guide modal growing past the viewport
+     on a short window (issue #56 follow-up) — applies to every modal in
+     the app, not just that one. */
+  align-items: safe center;
   justify-content: center;
   z-index: 1000;
   padding: 24px;
+  overflow-y: auto;
 }
 .modal-card {
   background: var(--panel);

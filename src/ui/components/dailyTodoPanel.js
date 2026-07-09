@@ -123,15 +123,23 @@ export function createDailyTodoPanel(store, roadmapStore) {
     missedToggle.classList.toggle('open', missedOpen);
   });
 
-  // A done or missed todo has no further use — offer to remove it for good
-  // so the list doesn't grow unbounded (issue #56 follow-up). An active todo
-  // never gets this button; deleting something you're still working toward
-  // isn't a mistake worth one click to recover from the way undoing a
-  // checkbox is.
+  // Every todo gets a delete button, active or not (issue #56 follow-up) —
+  // originally restricted to done/missed only, but a todo linked to a
+  // roadmap topic (dashboard.js's ⏱ row button) needs an "undo" for the
+  // case where it was added by mistake, and there's no reason to make the
+  // user wait for it to finish or expire first just to remove it. Deleting
+  // an active linked todo never touches the roadmap — it's still active
+  // precisely because it was never confirmed done, so there's nothing to
+  // revert on that side; the confirm message says so explicitly to make
+  // that reassurance visible, not just true.
   async function handleDelete(todo) {
+    const isLinked = !!(todo.linkedTemplateId && todo.linkedItemId);
+    const message = isLinked && !todo.done && !isExpired(todo)
+      ? 'This removes it for good. This cannot be undone. The linked roadmap topic is untouched either way.'
+      : 'This removes it for good. This cannot be undone.';
     if (!await confirmDialog({
       title: `Delete "${todo.title}"?`,
-      message: 'This removes it for good. This cannot be undone.',
+      message,
       confirmText: 'Delete',
       danger: true
     })) return;
@@ -183,10 +191,8 @@ export function createDailyTodoPanel(store, roadmapStore) {
   }
 
   function renderRow(todo, now) {
-    const expired = isExpired(todo, now);
     const ms = remainingMs(todo, now);
     const band = todo.done ? null : remainingBand(ms);
-    const isFinished = todo.done || expired;
     const isLinked = !!(todo.linkedTemplateId && todo.linkedItemId);
     const roadmapName = isLinked ? resolveRoadmapName(roadmapStore, todo.linkedTemplateId) : null;
     const checkboxInput = el('input', {
@@ -205,7 +211,7 @@ export function createDailyTodoPanel(store, roadmapStore) {
         roadmapName ? el('span', { className: 'daily-todo-linked-badge', title: `Linked to a topic in ${roadmapName}`, text: `via ${roadmapName}` }) : null
       ].filter(Boolean)),
       !todo.done ? el('span', { className: `daily-todo-remaining ${band}`, text: formatRemaining(ms) }) : null,
-      isFinished ? el('button', {
+      el('button', {
         type: 'button',
         className: 'daily-todo-delete',
         'data-action': 'delete',
@@ -213,7 +219,7 @@ export function createDailyTodoPanel(store, roadmapStore) {
         title: 'Delete',
         text: '×',
         onClick: () => handleDelete(todo)
-      }) : null
+      })
     ].filter(Boolean));
   }
 

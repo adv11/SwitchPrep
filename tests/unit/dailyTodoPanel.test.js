@@ -128,12 +128,17 @@ describe('createDailyTodoPanel', () => {
     node._cleanup();
   });
 
-  it('an active (not done, not missed) todo has no delete button', () => {
+  it('an active todo can also be deleted after confirmation (undo, issue #56 follow-up)', async () => {
     const store = createFakeStore();
     store.addTodo({ title: 'Task', durationMs: 60 * 60 * 1000 });
     const node = createDailyTodoPanel(store);
 
-    expect(node.querySelector('.daily-todo-item .daily-todo-delete')).toBeNull();
+    node.querySelector('.daily-todo-item .daily-todo-delete').click();
+    document.querySelector('.modal-overlay [data-action="confirm"]').click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(node.querySelector('.daily-todo-item')).toBeNull();
     node._cleanup();
   });
 
@@ -330,6 +335,33 @@ describe('createDailyTodoPanel — linked-topic completion (issue #56 follow-up)
     expect(document.querySelector('.modal-overlay')).toBeNull();
     expect(roadmapStore.setItemDoneInTemplate).not.toHaveBeenCalled();
     expect(store.getSnapshot().todos[0].done).toBe(true);
+    node._cleanup();
+  });
+
+  it('deleting an active linked todo (undo) never touches roadmapStore, and the confirm message reassures the roadmap is untouched', async () => {
+    const store = createFakeStore([linkedTodo()]);
+    const roadmapStore = createFakeRoadmapStore();
+    const node = createDailyTodoPanel(store, roadmapStore);
+
+    node.querySelector('.daily-todo-item .daily-todo-delete').click();
+    const dialog = document.querySelector('.modal-overlay[aria-label*="Delete"]');
+    expect(dialog.textContent).toContain('untouched');
+    dialog.querySelector('[data-action="confirm"]').click();
+    await flushMicrotasks();
+
+    expect(node.querySelector('.daily-todo-item')).toBeNull();
+    expect(roadmapStore.setItemDoneInTemplate).not.toHaveBeenCalled();
+  });
+
+  it('deleting a DONE linked todo does not repeat the "untouched" reassurance (it already updated the roadmap when completed)', async () => {
+    const store = createFakeStore([linkedTodo({ done: true, doneAt: Date.now() })]);
+    const roadmapStore = createFakeRoadmapStore();
+    const node = createDailyTodoPanel(store, roadmapStore);
+
+    node.querySelector('.daily-todo-item .daily-todo-delete').click();
+    const dialog = document.querySelector('.modal-overlay[aria-label*="Delete"]');
+    expect(dialog.textContent).not.toContain('untouched');
+    dialog.querySelector('[data-action="cancel"]').click();
     node._cleanup();
   });
 });
