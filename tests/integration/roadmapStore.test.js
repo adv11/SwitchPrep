@@ -1451,3 +1451,153 @@ describe('client-side length caps (issue #53)', () => {
     expect(store.getSnapshot().allItems[id].resources[0].url).toBe('https://example.com');
   });
 });
+
+// issue #56 follow-up: a Daily Todo linked to a roadmap topic must be able
+// to mark that topic done/not-done regardless of which template the user
+// currently has open — see the extraction comment above
+// setItemDoneInTemplate's definition in roadmapStore.js for the three cases
+// (active / cached / cold-read) this covers.
+describe('setItemDoneInTemplate — issue #56 follow-up', () => {
+  it('active template: behaves like updateItem, bumps structuralVersion, and reports the item title', async () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    await store.setUser({ uid: 'u1' });
+    const id = Object.keys(store.getSnapshot().allItems)[0];
+    const titleBefore = store.getSnapshot().allItems[id].title;
+    const versionBefore = store.getSnapshot().structuralVersion;
+
+    const result = await store.setItemDoneInTemplate('java-backend', id, true);
+
+    expect(result).toEqual({ ok: true, title: titleBefore });
+    expect(store.getSnapshot().allItems[id].done).toBe(true);
+    expect(store.getSnapshot().allItems[id].completedViaTodoAt).toEqual(expect.any(Number));
+    expect(store.getSnapshot().structuralVersion).toBeGreaterThan(versionBefore);
+  });
+
+  it('active template: unsetting clears completedViaTodoAt', async () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    await store.setUser({ uid: 'u1' });
+    const id = Object.keys(store.getSnapshot().allItems)[0];
+    await store.setItemDoneInTemplate('java-backend', id, true);
+
+    await store.setItemDoneInTemplate('java-backend', id, false);
+    expect(store.getSnapshot().allItems[id].done).toBe(false);
+    expect(store.getSnapshot().allItems[id].completedViaTodoAt).toBeNull();
+  });
+
+  it("active template: resolves ok:false for an id that doesn't exist", async () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    await store.setUser({ uid: 'u1' });
+    const result = await store.setItemDoneInTemplate('java-backend', 'nonexistent', true);
+    expect(result).toEqual({ ok: false, title: null });
+  });
+
+  it('cached (visited this session, not active): patches roadmapCache and saves directly to that template\'s Firebase path, without touching the active template', async () => {
+    vi.useFakeTimers();
+    dbApi.getMeta.mockResolvedValue({ onboardingDone: true, activeTemplateId: 'java-backend', startedTemplateIds: ['java-backend', 'frontend'] });
+    const store = createRoadmapStore();
+    await store.setUser({ uid: 'u1' });
+
+    await store.switchRoadmap('frontend'); // now cached
+    const frontendId = Object.keys(store.getSnapshot().allItems)[0];
+    await store.switchRoadmap('java-backend'); // frontend is cached but no longer active
+    dbApi.saveRoadmap.mockClear();
+
+    const activeVersionBefore = store.getSnapshot().structuralVersion;
+    const result = await store.setItemDoneInTemplate('frontend', frontendId, true);
+
+    expect(result.ok).toBe(true);
+    expect(store.getSnapshot().activeTemplateId).toBe('java-backend'); // never switched
+    expect(store.getSnapshot().structuralVersion).toBe(activeVersionBefore); // the on-screen template is untouched
+    expect(dbApi.saveRoadmap).toHaveBeenCalledWith('u1', 'frontend', expect.objectContaining({
+      templateId: 'frontend',
+      items: expect.objectContaining({ [frontendId]: expect.objectContaining({ done: true }) })
+    }));
+
+    // Switching back to frontend picks up the cached, already-patched item —
+    // never re-reads Firebase for a template visited this session.
+    dbApi.getRoadmap.mockClear();
+    await store.switchRoadmap('frontend');
+    expect(store.getSnapshot().allItems[frontendId].done).toBe(true);
+    expect(dbApi.getRoadmap).not.toHaveBeenCalled();
+  });
+
+  it('cold (never visited this session): one-shot reads Firebase, patches, and saves back', async () => {
+    vi.useFakeTimers();
+    dbApi.getRoadmap.mockImplementation((_uid, templateId) => (templateId === 'piano'
+      ? Promise.resolve({ items: { 'piano-1': { id: 'piano-1', title: 'Scales', done: false } }, phases: [] })
+      : Promise.resolve(null)));
+    const store = createRoadmapStore();
+    await store.setUser({ uid: 'u1' });
+
+    const result = await store.setItemDoneInTemplate('piano', 'piano-1', true);
+
+    expect(result).toEqual({ ok: true, title: 'Scales' });
+    expect(dbApi.getRoadmap).toHaveBeenCalledWith('u1', 'piano');
+    expect(dbApi.saveRoadmap).toHaveBeenCalledWith('u1', 'piano', expect.objectContaining({
+      templateId: 'piano',
+      items: expect.objectContaining({ 'piano-1': expect.objectContaining({ done: true }) })
+    }));
+    expect(store.getSnapshot().activeTemplateId).toBe('java-backend'); // never switched
+  });
+
+  it('cold: resolves ok:false when neither Firebase nor a local blob has the item (source topic/roadmap gone)', async () => {
+    vi.useFakeTimers();
+    dbApi.getRoadmap.mockResolvedValue(null);
+    const store = createRoadmapStore();
+    await store.setUser({ uid: 'u1' });
+
+    const result = await store.setItemDoneInTemplate('piano', 'piano-1', true);
+    expect(result).toEqual({ ok: false, title: null });
+    expect(dbApi.saveRoadmap).not.toHaveBeenCalledWith('u1', 'piano', expect.anything());
+  });
+
+  // A soft-deleted item (removeItem()) still physically exists in the map —
+  // just never rendered again — so without an explicit check it would look
+  // "found" to every branch below and silently succeed with no visible
+  // effect. See the linked-todo case: dailyTodoPanel.js's confirm dialog
+  // says "This will also mark this topic done" — that must not become a
+  // false promise for a topic the user removed after linking a todo to it.
+  it('active template: resolves ok:false for a soft-deleted item', async () => {
+    vi.useFakeTimers();
+    const store = createRoadmapStore();
+    await store.setUser({ uid: 'u1' });
+    const id = Object.keys(store.getSnapshot().allItems)[0];
+    store.removeItem(id);
+
+    const result = await store.setItemDoneInTemplate('java-backend', id, true);
+    expect(result).toEqual({ ok: false, title: null });
+  });
+
+  it('cached: resolves ok:false for a soft-deleted item, without a redundant Firebase read', async () => {
+    vi.useFakeTimers();
+    dbApi.getMeta.mockResolvedValue({ onboardingDone: true, activeTemplateId: 'java-backend', startedTemplateIds: ['java-backend', 'frontend'] });
+    const store = createRoadmapStore();
+    await store.setUser({ uid: 'u1' });
+
+    await store.switchRoadmap('frontend');
+    const frontendId = Object.keys(store.getSnapshot().allItems)[0];
+    store.removeItem(frontendId);
+    await store.switchRoadmap('java-backend');
+    dbApi.getRoadmap.mockClear();
+
+    const result = await store.setItemDoneInTemplate('frontend', frontendId, true);
+    expect(result).toEqual({ ok: false, title: null });
+    expect(dbApi.getRoadmap).not.toHaveBeenCalled(); // never falls through to a cold read
+  });
+
+  it('cold: resolves ok:false for a soft-deleted item read from Firebase', async () => {
+    vi.useFakeTimers();
+    dbApi.getRoadmap.mockImplementation((_uid, templateId) => (templateId === 'piano'
+      ? Promise.resolve({ items: { 'piano-1': { id: 'piano-1', title: 'Scales', done: false, deleted: true } }, phases: [] })
+      : Promise.resolve(null)));
+    const store = createRoadmapStore();
+    await store.setUser({ uid: 'u1' });
+
+    const result = await store.setItemDoneInTemplate('piano', 'piano-1', true);
+    expect(result).toEqual({ ok: false, title: null });
+    expect(dbApi.saveRoadmap).not.toHaveBeenCalledWith('u1', 'piano', expect.anything());
+  });
+});

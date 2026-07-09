@@ -513,10 +513,18 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   inset: 0;
   background: rgba(15, 23, 42, 0.55);
   display: flex;
-  align-items: center;
+  /* `safe center` (not plain `center`) so a modal taller than the viewport
+     stays scrollable to its very top and bottom — plain `center` on an
+     overflowing flex container clips both ends equally and makes them
+     unreachable no matter how far you scroll, a well-known flexbox+overflow
+     trap. Found via the Daily Todos guide modal growing past the viewport
+     on a short window (issue #56 follow-up) — applies to every modal in
+     the app, not just that one. */
+  align-items: safe center;
   justify-content: center;
   z-index: 1000;
   padding: 24px;
+  overflow-y: auto;
 }
 .modal-card {
   background: var(--panel);
@@ -630,6 +638,37 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   width: 8px; height: 8px; border-radius: 50%; background: #65a30d; display: inline-block;
 }
 .sync-dot.error { background: var(--danger); }
+
+/* Small header notification for the soonest active Daily Todo (issue #56
+   follow-up) — visible on every roadmap's dashboard, not just the
+   onboarding page the todo list itself lives on, since todos are global.
+   Reuses the same ok/warn/danger status-color families as
+   daily-todo-remaining's countdown bands (src/ui/utils/dailyTodo.js
+   remainingBand) rather than inventing new colors, so the urgency reads
+   consistently wherever a todo countdown appears. Hidden entirely (not just
+   emptied) when there is no active todo — see updateDailyTodoBadge in
+   dashboard.js. */
+.daily-todo-nav-badge[hidden] { display: none; }
+.daily-todo-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  padding: 6px 10px;
+  border-radius: 999px;
+  text-decoration: none;
+  border: 1px solid var(--status-ok-border);
+  background: var(--status-ok-bg);
+  color: var(--status-ok-text);
+  transition: transform 0.15s ease;
+}
+.daily-todo-nav-badge:hover, .daily-todo-nav-badge:focus-visible { transform: translateY(-1px); }
+.daily-todo-nav-badge:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+.daily-todo-nav-badge.warn { background: var(--status-warn-bg); color: var(--status-warn-text); border-color: var(--status-warn-border); }
+.daily-todo-nav-badge.danger { background: var(--status-error-bg); color: var(--status-error-text); border-color: var(--status-error-border); }
+.daily-todo-nav-icon { font-size: 13px; line-height: 1; }
 
 .hero-panel {
   max-width: 1160px;
@@ -745,6 +784,179 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   box-shadow: var(--shadow-sm);
 }
 .search-input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 4px var(--focus); }
+
+/* Daily Todos (issue #56) — a self-contained card, separate from the phase
+   list, sourced from its own store (dailyTodoStore.js), not roadmapStore.
+   Deliberately styled with the same glass-card chrome as .template-card
+   (surface-glass background, radius-lg, shadow-md) so it visually belongs
+   to the same "card" family on the onboarding grid, but with an --accent
+   (not --brand) border/icon color — --accent is already used app-wide as
+   the "not the roadmap-teal" token (progress bar highlight, glow-accent),
+   so reusing it here (rather than inventing a new color) is what makes it
+   read as "a different kind of card" in both themes without a special case. */
+.daily-todo-panel {
+  max-width: 1160px;
+  margin: 0 auto 18px;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface-glass);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 18px 20px 16px;
+}
+/* On the onboarding "all roadmaps" page, .onboarding-inner already caps
+   width at 880px and every sibling (header, template-grid) sits flush
+   against it with no extra inset of its own. */
+.onboarding-inner > .daily-todo-panel {
+  max-width: none;
+  margin: 0;
+}
+.daily-todo-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.daily-todo-icon { font-size: 20px; line-height: 1; color: var(--accent); }
+.daily-todo-heading {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+.daily-todo-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.daily-todo-info-btn:hover { color: var(--accent); border-color: var(--accent); }
+.daily-todo-info-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+/* Inner rows no longer stack as their own bordered boxes — they sit flush
+   inside .daily-todo-panel's own card padding, divided by hairlines, so the
+   whole thing reads as one card rather than a heading floating above a
+   separate stack of boxes. */
+.daily-todo-panel > .daily-todo-add-row,
+.daily-todo-panel > .daily-todo-list,
+.daily-todo-panel > .daily-todo-missed-toggle,
+.daily-todo-panel > .daily-todo-missed-list {
+  background: transparent;
+  border: none;
+}
+.daily-todo-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 0 14px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--line);
+}
+.daily-todo-add-row .inline-add { flex: 1; min-width: 160px; }
+.todo-duration-select { min-width: 110px; }
+.todo-custom-hours { width: 90px; }
+
+.daily-todo-list {
+  display: grid;
+  border-top: none;
+}
+.daily-todo-empty {
+  margin: 0;
+  padding: 14px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.daily-todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.daily-todo-item.done .daily-todo-title { text-decoration: line-through; color: var(--muted); }
+
+.daily-todo-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  min-width: 0;
+}
+.daily-todo-checkbox input[type='checkbox'] { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; }
+.daily-todo-title { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.daily-todo-linked-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--brand-dark);
+  background: var(--brand-light);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.daily-todo-remaining {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.daily-todo-remaining.ok { color: var(--brand); }
+.daily-todo-remaining.warn { color: var(--p1); }
+.daily-todo-remaining.danger { color: var(--p0); }
+
+.daily-todo-delete {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.daily-todo-delete:hover { color: var(--danger); background: var(--status-error-bg); }
+.daily-todo-delete:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+
+.daily-todo-missed-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.daily-todo-missed-list {
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.daily-todo-missed-list .daily-todo-item { opacity: 0.75; }
+.daily-todo-missed-list .daily-todo-title { text-decoration: line-through; }
 
 .dashboard-content {
   flex: 1;
@@ -911,6 +1123,18 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 }
 .notes-indicator:hover { opacity: 1; transform: translateY(-1px); }
 .notes-indicator:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); border-radius: 4px; }
+
+/* Set when a topic was last marked done via a linked Today's Todo (issue
+   #56 follow-up) — cleared the moment the topic (or the linked todo) is
+   unchecked again, so this never shows a stale completion date. Not
+   interactive (no onClick) — the title/aria-label attribute alone carries
+   the date, same as a native tooltip. */
+.completed-via-todo-indicator {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--accent);
+  cursor: default;
+}
 
 .check-actions { opacity: 0; transition: opacity 140ms ease; }
 .check-item:hover .check-actions, .check-item:focus-within .check-actions { opacity: 1; }
@@ -1164,6 +1388,7 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   .btn-sm { min-height: 44px; }
   .filter-chip { min-height: 44px; }
   .check-item { min-height: 44px; }
+  .daily-todo-delete, .daily-todo-info-btn { width: 44px; height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

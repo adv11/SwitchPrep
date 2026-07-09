@@ -113,6 +113,7 @@ src/services/firebase.config.example.js  committed template for the file above
 src/services/localStorageKeys.js  canonical `ascent-*` localStorage/sessionStorage key strings
 src/services/migration.js     one-time migration off the pre-rename `switchprep-*` key prefix
 src/services/roadmapStore.js  in-memory roadmap store: subscribe/notify, local + adapter save, onboarding detection
+src/services/dailyTodoStore.js  in-memory Daily Todos store (issue #56) — a separate, flat, rolling-deadline list; same subscribe/notify + debounced save pattern as roadmapStore.js, deliberately without structuralVersion
 src/services/storage/StorageAdapter.js       storage backend interface (issue #5) — required + optional methods
 src/services/storage/FirebaseAdapter.js      Realtime Database implementation (formerly firebase.js's dbApi)
 src/services/storage/LocalStorageAdapter.js  standalone localStorage implementation — not yet wired into roadmapStore.js
@@ -128,6 +129,9 @@ src/ui/pages/dashboard.js     the roadmap dashboard (the whole app, really)
 src/ui/components/authShell.js   shared chrome for signIn/signUp (brand row + theme toggle + card)
 src/ui/components/brand.js       canonical brand mark/wordmark — createBrandMark()/createBrandIcon()
 src/ui/components/themeToggle.js reusable dark/light toggle button
+src/ui/components/dailyTodoPanel.js  "Today's Todos" card (issue #56) — add form, live countdown, collapsed Missed section, delete-when-finished, info button; mounted on onboarding.js (roadmap-agnostic), not dashboard.js
+src/ui/components/dailyTodoGuide.js  informational modal reachable from the Daily Todos card's ℹ button — explains the rolling-deadline/Missed/delete model (issue #56 follow-up)
+src/ui/components/addToDailyTodoModal.js  "Add to Today's Todos" duration prompt, opened from a roadmap checklist row's ⏱ button (issue #56 follow-up) — links the created todo back to that exact (templateId, itemId)
 src/ui/components/itemPanel.js   slide-in panel for editing a topic + its resources + notes
 src/ui/components/toast.js       transient toast notifications
 src/ui/components/buildYourOwnGuide.js  informational modal — "How do I build my own roadmap?"
@@ -137,6 +141,8 @@ src/data/importPrompt.js        versioned AI-import prompt template — IMPORT_P
 src/core/roadmap/importValidator.js  pure validator for AI-import roadmap JSON
 src/core/roadmap/schemaAdapter.js    pure converter: validated import JSON -> { phases, items } roadmapStore shape
 src/core/roadmap/limits.js           MAX_TITLE_LENGTH/MAX_RESOURCE_LABEL_LENGTH/MAX_RESOURCE_URL_LENGTH/isValidResource (issue #53) — dependency-free so itemPanel.js can import the caps without pulling in roadmapStore.js's Firebase-backed adapter chain
+src/core/dailyTodo/limits.js         MAX_TODO_TITLE_LENGTH/MAX_ACTIVE_TODOS/MIN_DURATION_MS/MAX_DURATION_MS/DURATION_PRESETS/clampDurationMs (issue #56) — dependency-free, same reasoning as core/roadmap/limits.js
+src/ui/utils/dailyTodo.js            pure time helpers for Daily Todos (issue #56) — isExpired/remainingMs/formatRemaining/remainingBand, no DOM/Firebase dependency
 src/styles/app.css            the entire design system (tokens, components, both themes)
 docs/architecture.md          living architecture guide + Build Log (canonical deep-dive doc)
 firebase/database.rules.json  Realtime Database security rules
@@ -180,6 +186,139 @@ storage adapter (see below) after the debounce. Snapshots carry `saveState`
 (`saving`/`saved`/`local`/`synced`/`error`), a `structuralVersion` counter,
 `activeTemplateId`, `startedTemplateIds` (issue #58), `onboardingDone`, and `phases`
 (the current template's phase/section skeleton — see below).
+
+**Daily Todos store (`src/services/dailyTodoStore.js`, issue #56) — a second instance of
+the Store pattern above, not a first one to design from scratch.** Same mutable map +
+`subscribe`/`notify` + 500ms debounced `queueSave()` (local immediately, storage adapter
+after the debounce) + Firebase-echo guard (`stableStringify`-based, duplicated rather than
+imported from `roadmapStore.js` so the two stores stay independent) + sign-out privacy
+guard (a uid transition clears this store's own local data too — see "Sign-out contract"
+below, which applies here just as much as to the roadmap). The one thing it deliberately
+does **not** carry over is `structuralVersion`: that optimization exists specifically to
+avoid tearing down/rebuilding every phase-card on a roadmap `done` toggle, and this list is
+flat and small (≤20 active items, `MAX_ACTIVE_TODOS`) with no equivalent expensive
+re-render to protect — a plain re-render on every store change is fine here. Each todo's
+`expiresAt` is a rolling deadline computed once at creation
+(`createdAt + durationMs`, `durationMs` chosen per-todo by the user from presets or a
+custom hours value — `src/core/dailyTodo/limits.js`) and stored, never recomputed, so a
+device clock/timezone change can't retroactively move a deadline. Expiry itself
+(`isExpired`/`remainingMs`/`formatRemaining`/`remainingBand`, `src/ui/utils/dailyTodo.js`)
+is a pure, derived value computed on read — there is no server cron on this static-hosted
+app to run a background "mark expired" job, so a missed (expired, not done) todo just
+stops rendering as active and moves into a collapsed "Missed" section instead of ever
+being auto-deleted — deletion is always an explicit, confirmed user action instead (see
+`removeTodo(id)` below). Never deleted *automatically* is not the same as *never
+deletable*: `removeTodo(id)` permanently drops a todo from the store, but only the UI
+exposes it — a ✕ button that appears on a `done` or missed (never an active) row, gated
+behind `confirmDialog({ danger: true })` since it has no undo, unlike toggling `done`.
+Without this, the Missed section and the done-but-still-visible rows in the active list
+would both grow forever with no way to clean them up. `dailyTodoPanel.js` also gets a
+corner ℹ button (`openDailyTodoGuide()`, `src/ui/components/dailyTodoGuide.js`, same
+pattern as `buildYourOwnGuide.js`) explaining the rolling-deadline/preset-duration/
+Missed/delete model in place, since this feature has no other onboarding. **Placement:
+the Daily Todos card lives on `onboarding.js` — the "Pick a starting roadmap"/"Switch
+your starter roadmap" screen — not on `dashboard.js` at all.** It was tried on the
+dashboard first (rendered inside the header, above the roadmap hero) but that still read
+as belonging to whichever roadmap happened to be active, since the dashboard *is*
+per-roadmap. Since Daily Todos data is genuinely global to the user (never touched by
+which roadmap is active, or by starting/switching/hiding one), it now renders on the one
+screen that is itself roadmap-agnostic — right after the page heading, above the
+template grid. `main.js`'s `guardApp` already threads `dailyTodoStore` through to every
+route's ctx (originally added for the dashboard instance), so `onboarding.js` picking it
+up needed no wiring change there — just `createDailyTodoPanel(dailyTodoStore)` mounted
+in `renderOnboarding`'s own returned node, with `dailyTodoPanel?._cleanup?.()` added to
+its existing cleanup return alongside `themeToggleBtn._cleanup?.()`. If you ever consider
+moving it again, dashboard.js is specifically the wrong place — it's the roadmap view.
+
+**Cross-roadmap awareness — the header badge, not the editor, on `dashboard.js`.**
+Since a signed-in user spends most of their time on the dashboard rather than the
+onboarding picker, `dashboard.js` re-imports `dailyTodoStore` for exactly one purpose: a
+small pill (`.daily-todo-nav-badge`, next to the theme toggle) showing the soonest active
+todo's live countdown (`"⏱ 46m left"`, or `"⏱ 46m left · 3 due"` once more than one is
+active), reusing the same `isExpired`/`remainingMs`/`formatRemaining`/`remainingBand`
+helpers and the same ok/warn/danger status-color families the todo list's own countdown
+uses. It's read-only and link-only (`<a href="#/onboarding">`) — no done/delete/edit
+affordance lives here, only in `dailyTodoPanel.js` itself; the one exception is the
+row-level "link a topic to a todo" button below, which only ever *creates* a todo, never
+edits/completes/deletes one. Hidden entirely (`hidden` attribute, not just emptied) when
+there's no active todo. Subscribes to `dailyTodoStore` and ticks its own 30s
+`setInterval` (matching `dailyTodoPanel.js`'s own cadence), both cleaned up in
+`renderDashboard`'s existing route-cleanup return — same "Component subscription
+cleanup" rule as everything else with a subscription or timer.
+
+**Linking a roadmap topic to a Daily Todo, and completing either one from the other
+(issue #56 follow-up).** Every checklist row (`renderItemRow`, `dashboard.js`) has a ⏱
+button, next to Edit, opening `openAddToDailyTodoModal()`
+(`src/ui/components/addToDailyTodoModal.js` — same promise-based `{ ... } | null` contract
+as `openNewRoadmapModal()`) to ask how long you have; the topic's own title comes
+pre-filled (and editable — the todo doesn't have to be phrased exactly like the topic).
+Confirming calls `dailyTodoStore.addTodo()` with `linkedTemplateId`/`linkedItemId` set to
+the row's `(activeTemplateId, item.id)` pair, plus a `linkedItemTitle` display-time
+snapshot — **never just the topic's title**, since the same title can exist in more than
+one roadmap (the "Marketing Fundamentals" topic in a built-in template and a custom
+roadmap's own topic of the same name are different items) and only the id pair
+disambiguates which one a given todo actually points at.
+
+Completing that side of the link is where the real complexity lives, entirely in
+`dailyTodoPanel.js`'s `handleToggleDone()` and `roadmapStore.setItemDoneInTemplate()`:
+- **Checking** a linked todo (issue #56's original ask) asks for confirmation first
+  (`confirmDialog`, non-danger, naming the target roadmap: `"This will also mark this
+  topic done in <Roadmap Name>."`) — a cross-cutting side effect on data the user isn't
+  necessarily looking at deserves an explicit heads-up, same reasoning as any other
+  consequential confirmDialog in this app. Cancelling resets the checkbox's visual state
+  (the browser already flipped it before the handler ran) and touches nothing.
+- **Unchecking** a completed linked todo syncs back silently, no confirmation — this is
+  the safe, reversible direction, consistent with how every other done/not-done toggle
+  in the app already works.
+- Either direction calls `roadmapStore.setItemDoneInTemplate(templateId, itemId, done)`
+  — new, and the one genuinely new piece of surface area in `roadmapStore.js` for this
+  feature: it marks an item done/not-done in **any** template, not just the one currently
+  active, without ever silently switching the user's active roadmap out from under them.
+  Three cases, cheapest first: (1) the target template is already active — delegates to
+  `updateItem()` with the extra `completedViaTodoAt` bookkeeping folded into the same
+  patch, so the row's badge (below) gets its `structuralVersion` re-render for free, same
+  precedent as the `notes` field; (2) the target template is cached (visited this
+  session, just not on screen right now) — patches `roadmapCache` in place and persists
+  (local blob + `adapter.saveRoadmap`) directly, touching neither `activeTemplateId` nor
+  `structuralVersion`, since nothing currently rendered needs to change; (3) the target
+  template is cold (never touched this session) — one-shot reads it (Firebase first,
+  local blob fallback), patches, and persists the same way. Resolves `{ ok: false }` if
+  the item can't be found anywhere (its topic, or the whole roadmap, was deleted after
+  the todo was linked to it) — the todo still completes either way (the user's intent to
+  finish *something* should stand even if the link has gone stale), just with a softer
+  warning toast instead of the normal success one.
+- A completed link gets a small ⏱✓ indicator on the topic's own row
+  (`.completed-via-todo-indicator`, tooltip `"Completed via Today's Todo on <date>"`) —
+  a **new, dedicated field** (`item.completedViaTodoAt`), never appended to the topic's
+  own free-text `notes` field, so an auto-generated annotation never mixes with something
+  the user actually typed. Cleared automatically the moment either side is unchecked
+  again — `dashboard.js`'s own checklist-row toggle (`toggleDone()`) clears it when a
+  user unchecks a topic directly (not via the linked todo), and
+  `setItemDoneInTemplate(..., false)` clears it on the todo-driven uncheck path — so the
+  badge can never show a stale completion date on a topic that's since been reset. Note
+  the coupling only ever runs one direction structurally: `dailyTodoStore.js` never
+  imports `roadmapStore.js` (a todo can exist with no roadmap at all); it's
+  `dailyTodoPanel.js`, the UI layer, that's handed both stores and orchestrates between
+  them. Toggling a linked topic's `done` state directly on the dashboard (bypassing the
+  todo) does **not** reach back and flip the linked todo itself — only the
+  `completedViaTodoAt` annotation is kept honest that way, not full bidirectional sync of
+  `done` in both directions; if that's ever needed, it has to be built deliberately, not
+  assumed to already exist.
+
+**Undoing a linked todo before it's completed, and a soft-delete edge case (issue #56
+follow-up).** The ✕ delete button (`handleDelete` in `dailyTodoPanel.js`) is available on
+every todo regardless of state — active, done, or missed — not just done/missed as
+originally built. This is deliberately how you "undo" a topic linked by mistake: deleting
+an **active** linked todo never calls `roadmapStore.setItemDoneInTemplate` at all (only
+completing one does), and the confirm dialog's message says so explicitly
+("...The linked roadmap topic is untouched either way.") rather than leaving that
+implicit. `setItemDoneInTemplate` also treats a soft-deleted item
+(`item.deleted === true`, set by `removeItem()` — the item is still physically present in
+the map, just never rendered again) the same as a genuinely missing one in all three of
+its cases (active/cached/cold), resolving `{ ok: false }` instead of silently "succeeding"
+against a topic the user can no longer see or interact with — without this, completing a
+linked todo whose source topic had been deleted would report success with zero visible
+effect.
 
 **Storage adapter abstraction (`src/services/storage/`, issue #5, part 1).**
 `roadmapStore.js` never imports `firebase.js` directly for roadmap/meta reads and
@@ -510,20 +649,24 @@ meta tag and the `firebase.json` hosting headers.
 
 **Anonymous Firebase Auth users must be explicitly deleted when they exit without linking, to prevent orphaned data (issue #24).** A guest session's anonymous UID can never be re-authenticated once the session ends, so if it's never linked to a real account (`authApi.linkGuest`), its roadmap data would otherwise sit in the database forever with no way to read, export, or delete it. `authApi.signOut()` (`src/services/firebase.js`) delegates to `signOutWithCleanup()` (`src/services/authCleanup.js` — a pure, dependency-injected function with no Firebase imports, kept separate specifically so it's unit-testable without a real Firebase project) which checks `user.isAnonymous` first: for an unlinked guest it removes `users/{uid}` from the database and then deletes the Auth record (same data-before-Auth-record order as `deleteAccount()`, and for the same reason), instead of a plain sign-out. A linked guest is no longer anonymous by the time they sign out, so that path is unaffected. If the cleanup call throws (e.g. a stale token), it falls back to a plain sign-out — never block the user from leaving the app over a cleanup failure. See `docs/adr/ADR-005-anonymous-user-lifecycle.md`.
 
-**Realtime Database rules — no path other than `roadmap`/`roadmaps`/`meta` may be written under `users/{uid}`, and `reports/{uid}` is reserved for issue #9.** `firebase/database.rules.json` has a `$other: { ".validate": "false" }` catch-all under `users/$uid` specifically to stop a buggy or malicious client from writing arbitrary data outside the known shape (still auth-scoped to that uid, just unbounded before this). If you add a genuinely new top-level field under a user's data, add an explicit `.validate` rule for it — never rely on the `$other` catch-all rejecting it silently as "good enough." Realtime Database rules cannot count a map's children, so a per-roadmap item cap is enforced client-side instead, in `roadmapStore.js`'s `addItem()` (the one place items are created) — it returns `false` instead of mutating anything once a roadmap already holds 800 non-deleted items (lowered from 1,000 in issue #53 — no real roadmap organically approaches even 800 topics); callers must check this return value and surface an error rather than assuming success.
+**Realtime Database rules — no path other than `roadmap`/`roadmaps`/`meta`/`dailyTodos` may be written under `users/{uid}`, and `reports/{uid}` is reserved for issue #9.** `firebase/database.rules.json` has a `$other: { ".validate": "false" }` catch-all under `users/$uid` specifically to stop a buggy or malicious client from writing arbitrary data outside the known shape (still auth-scoped to that uid, just unbounded before this). If you add a genuinely new top-level field under a user's data, add an explicit `.validate` rule for it — never rely on the `$other` catch-all rejecting it silently as "good enough." Realtime Database rules cannot count a map's children, so a per-roadmap item cap is enforced client-side instead, in `roadmapStore.js`'s `addItem()` (the one place items are created) — it returns `false` instead of mutating anything once a roadmap already holds 800 non-deleted items (lowered from 1,000 in issue #53 — no real roadmap organically approaches even 800 topics); callers must check this return value and surface an error rather than assuming success. The same client-side-cap pattern applies to `dailyTodoStore.js`'s `addTodo()` (issue #56) — active (not-done, not-expired) todos are capped at `MAX_ACTIVE_TODOS` (20).
 
 **Client-side length caps on title/resource fields (`src/core/roadmap/limits.js`, issue #53) — the client-side half of issue #24's server-side Firebase rules.** `MAX_TITLE_LENGTH` (200), `MAX_RESOURCE_LABEL_LENGTH` (120), and `MAX_RESOURCE_URL_LENGTH` (2048) live in their own dependency-free module — never define these constants directly in `roadmapStore.js`, since `itemPanel.js` needs to import just the numbers without pulling in `roadmapStore.js`'s Firebase-backed storage-adapter chain (`adapterFactory.js` → `FirebaseAdapter.js` → `firebase.js`'s `https://` SDK imports), which breaks under Node's ESM loader in any test that doesn't mock `firebase.js`. `roadmapStore.js`'s `addItem()`, `updateItem()`, `addResource()`, and `updateResource()` — the only places these fields are ever written — reject (returning `false`, mutating nothing) a value over these caps; callers must check the return value, same convention as the item-count cap above. `itemPanel.js`'s Save/Add-resource handlers and `dashboard.js`'s quick-add row surface a friendly message using the same constants before the store call is even attempted — always keep the UI-layer message and the store-layer cap using the same imported constant, never a hardcoded number in either place.
 
 **ESLint code-cleanliness gates (`eslint.config.js`, issue #53).** `complexity: 10`, `max-depth: 4`, `max-lines-per-function: { max: 80 }`, and `max-params: 4` run as `warn` on every PR via the existing `lint` CI job. They are intentionally `warn`, not `error` — several files (`itemPanel.js`, `signUp.js`, `onboarding.js`, `importRoadmapModal.js`, and parts of `roadmapStore.js` carrying many documented invariants) still exceed them and are out of this issue's scope. When you touch a function that's already flagged, prefer extracting a **named, module-scope function** (grep-able, independently unit-testable) over just shortening lines — see `renderFilterChips`/`renderPhaseCard` in `dashboard.js`, `buildSignInForm`/`buildResetForm` in `signIn.js`, and `applyRemoteSnapshot` in `roadmapStore.js` for the pattern. Don't flip these to `error` without first re-auditing the whole repo's violation count — they were left at `warn` specifically because zero violations was never reached repo-wide.
 
-**Component subscription cleanup — always unsubscribe on DOM removal.** Any component
-that calls `onThemeChange()`, or subscribes to any other module-level store or service,
-must capture the returned unsubscribe function and call it when the component is torn
-down. The pattern: attach the unsubscribe to the element as `el._cleanup = unsubscribe`,
+**Component subscription cleanup — always unsubscribe on DOM removal, or clear the timer.**
+Any component that calls `onThemeChange()`, subscribes to any other module-level store or
+service, or starts a `setInterval`/`setTimeout` that outlives a single render, must
+capture the returned unsubscribe function (or the timer id) and clean it up when the
+component is torn down. The pattern: attach the cleanup to the element as
+`el._cleanup = unsubscribe` (or a function that calls `clearInterval`/`clearTimeout`),
 have the component factory return `{ node, cleanup }` (or expose `_cleanup` for callers
 to collect), and wire the cleanup into the route's cleanup return in `main.js`. Failing
-to do this leaks dead DOM references and fires callbacks on removed nodes — see Issue #27.
-Never add a subscription without a paired teardown path.
+to do this leaks dead DOM references, fires callbacks on removed nodes, or leaves a timer
+running forever — see Issue #27 (subscriptions) and `dailyTodoPanel.js`'s 30s countdown
+`setInterval` (issue #56, the same hazard applied to a timer instead of a subscription).
+Never add a subscription or a long-lived timer without a paired teardown path.
 
 **Card/grid layout — every card in a row must be equal height, with variable-length content, not the grid's stretch behavior, being the thing you design around.** A CSS grid's cells stretch equally by default (`align-items: stretch`), but a card only visually fills that cell if the card element itself is sized to `height: 100%` and stacks its content as a flex column — otherwise each card sizes to its own content and rows visibly mismatch the moment one card's text runs longer than its neighbors (this exact bug hit `.template-card` in the onboarding template picker, `src/ui/pages/onboarding.js` / `src/styles/app.css` — same-row cards rendered at different heights because the card had no `height: 100%` and used `display: grid` with content-sized rows instead of a flex column). The required pattern for any new card-grid component:
 - Grid container: `display: grid; grid-template-columns: repeat(auto-fit, minmax(<min>, 1fr)); align-items: stretch;` so it reflows responsively across breakpoints without a bespoke media query per card count.
@@ -564,6 +707,8 @@ has no browser chrome of its own to clear a notch). `.dashboard-header`/`.auth-p
 `position: fixed` element needs the same.
 
 **Never use the native `window.confirm()` — use `confirmDialog()` (`src/ui/components/confirmDialog.js`).** The browser's built-in confirm dialog can't be styled, breaks the app's own dark/light theming, and reads as unpolished in a customer-facing product. `confirmDialog({ title, message, confirmText, cancelText, danger })` returns a `Promise<boolean>` and renders the same `.modal-overlay`/`.modal-card` chrome as every other modal in the app (matches `showDeleteModal()` in `dashboard.js` and `openBuildYourOwnGuide()`), with Escape-to-cancel and click-outside-to-cancel built in. Pass `danger: true` for anything destructive/irreversible (delete, sign-out with unsaved changes, replacing a roadmap) to get the red confirm button; leave it `false` for reversible actions (e.g. hiding a template, which can be undone from "Show hidden templates"). Every call site does `if (!await confirmDialog({...})) return;` — same control flow as the old `confirm()`, so there's no excuse to reach for the native one out of convenience. Tests reach the dialog via `document.querySelector('.modal-overlay [data-action="confirm"|"cancel"]')` (Vitest/jsdom) or `page.locator('.modal-overlay[aria-label*="..."] [data-action="confirm"]')` (Playwright) — never via `page.on('dialog', ...)`, which only intercepts the native API this component replaced.
+
+**`.modal-overlay` uses `align-items: safe center`, not plain `center` — never change this back.** Plain `align-items: center` on an overflowing flex container (which `.modal-overlay` is, once any `.modal-card` content is taller than the viewport) clips both the top and bottom of the content equally and makes the clipped parts permanently unreachable by scrolling — a well-known flexbox+overflow trap, not a bug in any one modal's content. Found when `dailyTodoGuide.js`'s content grew long enough to push its "Got it" button below the fold on a short window, with no way to scroll to it (issue #56 follow-up). `align-items: safe center` centers when content fits and falls back to start-aligned (scrollable to both real ends) when it doesn't — combined with `overflow-y: auto` on `.modal-overlay` itself. This fixes every modal in the app that could ever grow tall (confirmDialog, item panel, guide modals), not just the one that surfaced it — if you ever add long-form modal content, you don't need a special case for it.
 
 **Brand mark is a home link on every authenticated/onboarding-adjacent page.** Clicking the "Ascent" logo/wordmark (`createBrandMark()`) always navigates somewhere predictable instead of sitting inert — `<a class="brand" href="#/signin">` on the sign-in/sign-up pages (already existed), and `<a class="brand" href="#/onboarding">` on the dashboard and onboarding pages (`src/ui/pages/dashboard.js`, `src/ui/pages/onboarding.js`), since `/onboarding` is the "all roadmaps" picker — the closest thing this app has to a home/index page. `.brand`'s CSS (`text-decoration: none; color: inherit;`) was already anchor-ready; only the wrapping element needed to change from a plain `<div>` to an `<a>`. Never make the brand mark a dead `<div>` on a page that has a sensible "home" to link to.
 

@@ -9,6 +9,9 @@ import { createBrandMark } from '../components/brand.js';
 import { confirmDialog } from '../components/confirmDialog.js';
 import { getTemplate } from '../../data/templates/index.js';
 import { MAX_TITLE_LENGTH } from '../../core/roadmap/limits.js';
+import { isExpired, remainingMs, formatRemaining, remainingBand } from '../utils/dailyTodo.js';
+import { openAddToDailyTodoModal } from '../components/addToDailyTodoModal.js';
+import { MAX_ACTIVE_TODOS } from '../../core/dailyTodo/limits.js';
 
 // `templatePhases` is the current user's chosen template's phase/section skeleton
 // (store.getSnapshot().phases) rather than a hardcoded import, so a template with
@@ -220,7 +223,7 @@ export function showDeleteModal() {
   passwordInput.focus();
 }
 
-export function renderDashboard(app, { user, store }) {
+export function renderDashboard(app, { user, store, dailyTodoStore }) {
   if (!user) {
     navigate('/signin', true);
     return;
@@ -254,17 +257,18 @@ export function renderDashboard(app, { user, store }) {
 
   const userLabel = user.isAnonymous ? 'Guest session' : (user.email || 'Signed in');
   const userPillClass = user.isAnonymous ? 'guest' : 'online';
-  const isCustomRoadmap = store.isCustomRoadmapId(store.getSnapshot().activeTemplateId);
+  const activeTemplateId = store.getSnapshot().activeTemplateId;
+  const isCustomRoadmap = store.isCustomRoadmapId(activeTemplateId);
   // Surfaced in the hero so it's never ambiguous which roadmap is currently
   // loaded — easy to lose track of after switching templates a few times. A
   // custom roadmap (issue #4) has no entry in the template registry, so its
   // name/icon come from customRoadmaps meta instead of getTemplate().
   const currentTemplate = isCustomRoadmap
     ? (() => {
-      const custom = store.getSnapshot().customRoadmaps.find(r => r.id === store.getSnapshot().activeTemplateId);
+      const custom = store.getSnapshot().customRoadmaps.find(r => r.id === activeTemplateId);
       return { icon: '✎', name: custom ? custom.title : 'Custom roadmap' };
     })()
-    : getTemplate(store.getSnapshot().activeTemplateId);
+    : getTemplate(activeTemplateId);
 
   function persistUi() {
     store.setUiState({
@@ -299,6 +303,45 @@ export function renderDashboard(app, { user, store }) {
     syncPill.className = `sync-pill ${userPillClass}${state === 'error' ? ' error' : ''}`;
   }
 
+  // A checklist toggle is normally cosmetic-only (see updateItem's
+  // isCosmetic check), but unchecking an item that carries a
+  // completedViaTodoAt annotation (issue #56 follow-up — set when this item
+  // was last marked done via a linked Today's Todo) must clear it too, so
+  // the badge below never shows a stale "completed via todo" date on a
+  // topic that's since been unchecked — either by re-toggling it here
+  // directly, or by un-checking the linked todo itself (dailyTodoPanel.js's
+  // uncheck-sync path calls this same store method, not this handler).
+  function toggleDone(item) {
+    const live = store.getSnapshot().allItems[item.id];
+    if (!live) return;
+    const nextDone = !live.done;
+    const patch = { done: nextDone };
+    if (!nextDone && live.completedViaTodoAt) patch.completedViaTodoAt = null;
+    store.updateItem(item.id, patch);
+  }
+
+  // Opens the duration prompt and, once confirmed, creates a Today's Todo
+  // linked back to this exact (activeTemplateId, item.id) pair — never just
+  // the title, since the same topic title can exist in more than one
+  // roadmap (issue #56 follow-up).
+  async function handleAddToDailyTodo(item) {
+    if (!dailyTodoStore) return;
+    const result = await openAddToDailyTodoModal({ topicTitle: item.title });
+    if (!result) return;
+    const added = dailyTodoStore.addTodo({
+      title: result.title,
+      durationMs: result.durationMs,
+      linkedTemplateId: activeTemplateId,
+      linkedItemId: item.id,
+      linkedItemTitle: item.title
+    });
+    if (!added) {
+      showToast(`You can have at most ${MAX_ACTIVE_TODOS} active todos at once`, 'error');
+      return;
+    }
+    showToast(`Added "${result.title}" to Today's Todos`, 'success');
+  }
+
   function renderItemRow(item) {
     return el('div', {
       className: `check-item ${item.done ? 'done' : ''}`,
@@ -308,14 +351,12 @@ export function renderDashboard(app, { user, store }) {
       dataset: { id: item.id },
       onClick: e => {
         if (e.target.closest('[data-action]')) return;
-        const live = store.getSnapshot().allItems[item.id];
-        if (live) store.updateItem(item.id, { done: !live.done });
+        toggleDone(item);
       },
       onKeydown: e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          const live = store.getSnapshot().allItems[item.id];
-          if (live) store.updateItem(item.id, { done: !live.done });
+          toggleDone(item);
         }
       }
     }, [
@@ -354,9 +395,28 @@ export function renderDashboard(app, { user, store }) {
               onDelete: () => store.removeItem(item.id)
             });
           }
+        }) : null,
+        item.completedViaTodoAt ? el('span', {
+          className: 'completed-via-todo-indicator',
+          'data-action': 'completed-via-todo',
+          title: `Completed via Today's Todo on ${new Date(item.completedViaTodoAt).toLocaleDateString()}`,
+          'aria-label': `Completed via Today's Todo on ${new Date(item.completedViaTodoAt).toLocaleDateString()}`,
+          text: '⏱✓'
         }) : null
       ].filter(Boolean)),
       el('div', { className: 'check-actions' }, [
+        dailyTodoStore ? el('button', {
+          type: 'button',
+          className: 'btn btn-ghost btn-sm',
+          'data-action': 'add-todo',
+          'aria-label': `Add "${item.title}" to Today's Todos`,
+          title: "Add to Today's Todos",
+          text: '⏱',
+          onClick: e => {
+            e.stopPropagation();
+            handleAddToDailyTodo(item);
+          }
+        }) : null,
         el('button', {
           type: 'button',
           className: 'btn btn-ghost btn-sm',
@@ -372,7 +432,7 @@ export function renderDashboard(app, { user, store }) {
             });
           }
         })
-      ])
+      ].filter(Boolean))
     ]);
   }
 
@@ -634,6 +694,39 @@ export function renderDashboard(app, { user, store }) {
   const themeToggleBtn = createThemeToggle();
   const verificationBanner = createVerificationBanner(user);
 
+  // Small header notification badge (not a per-roadmap feature — Daily Todos
+  // are intentionally global, see onboarding.js) surfacing the soonest active
+  // todo's countdown no matter which roadmap is currently open. Links to
+  // /onboarding, the only page the actual todo list/editor lives on.
+  const dailyTodoNavText = el('span', { className: 'daily-todo-nav-text' });
+  const dailyTodoNavBadge = dailyTodoStore ? el('a', {
+    href: '#/onboarding',
+    className: 'daily-todo-nav-badge',
+    title: "Today's Todos",
+    hidden: true
+  }, [
+    el('span', { className: 'daily-todo-nav-icon', 'aria-hidden': 'true', text: '⏱' }),
+    dailyTodoNavText
+  ]) : null;
+
+  function updateDailyTodoBadge() {
+    if (!dailyTodoStore) return;
+    const now = Date.now();
+    const active = dailyTodoStore.getSnapshot().todos
+      .filter(t => !t.done && !isExpired(t, now))
+      .sort((a, b) => a.expiresAt - b.expiresAt);
+    if (!active.length) {
+      dailyTodoNavBadge.hidden = true;
+      return;
+    }
+    const soonest = active[0];
+    const ms = remainingMs(soonest, now);
+    dailyTodoNavBadge.hidden = false;
+    dailyTodoNavBadge.className = `daily-todo-nav-badge ${remainingBand(ms)}`;
+    dailyTodoNavText.textContent = active.length > 1 ? `${formatRemaining(ms)} · ${active.length} due` : formatRemaining(ms);
+    dailyTodoNavBadge.setAttribute('aria-label', `Today's Todos — "${soonest.title}", ${formatRemaining(ms)}${active.length > 1 ? `, ${active.length} active todos` : ''}`);
+  }
+
   const shell = el('div', { className: 'dashboard fade-in' }, [
     verificationBanner,
     offlineBanner,
@@ -646,6 +739,7 @@ export function renderDashboard(app, { user, store }) {
         }, createBrandMark({ tagline: 'Your personal progress command center' })),
         el('div', { className: 'header-actions' }, [
           themeToggleBtn,
+          dailyTodoNavBadge,
           syncPill,
           el('span', { className: 'user-chip', text: userLabel }),
           user.isAnonymous ? el('a', { href: '#/signup', className: 'btn btn-secondary btn-sm', text: 'Create account' }) : null,
@@ -721,6 +815,11 @@ export function renderDashboard(app, { user, store }) {
   lastStructuralVersion = store.getSnapshot().structuralVersion;
   render(store.getSnapshot());
 
+  // 30s resolution matches dailyTodoPanel.js's own countdown tick — enough
+  // for hour/minute-granularity text without a busier interval.
+  const unsubDailyTodo = dailyTodoStore ? dailyTodoStore.subscribe(updateDailyTodoBadge) : null;
+  const dailyTodoTickTimer = dailyTodoStore ? setInterval(updateDailyTodoBadge, 30000) : null;
+
   function setOnlineState() {
     offlineBanner.classList.toggle('show', !navigator.onLine);
   }
@@ -731,6 +830,8 @@ export function renderDashboard(app, { user, store }) {
   return () => {
     themeToggleBtn._cleanup?.();
     unsubStore();
+    unsubDailyTodo?.();
+    if (dailyTodoTickTimer) clearInterval(dailyTodoTickTimer);
     window.removeEventListener('online', setOnlineState);
     window.removeEventListener('offline', setOnlineState);
     clearTimeout(saveBadgeTimer);
