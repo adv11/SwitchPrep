@@ -50,7 +50,42 @@ describe('addTodo', () => {
     expect(todo.createdAt).toBe(1_000_000);
     expect(todo.expiresAt).toBe(1_000_000 + durationMs);
     expect(todo.done).toBe(false);
+    expect(todo.linkedTemplateId).toBeNull();
+    expect(todo.linkedItemId).toBeNull();
+    expect(todo.linkedItemTitle).toBeNull();
     vi.useRealTimers();
+  });
+
+  it('stores link fields when added from a roadmap topic (issue #56 follow-up)', async () => {
+    const store = createDailyTodoStore();
+    await store.setUser({ uid: 'u1' });
+    store.addTodo({
+      title: 'Finish reading',
+      durationMs: 60000 * 60,
+      linkedTemplateId: 'frontend',
+      linkedItemId: 'item-42',
+      linkedItemTitle: 'Semantic HTML'
+    });
+    const todo = store.getSnapshot().todos[0];
+    expect(todo.linkedTemplateId).toBe('frontend');
+    expect(todo.linkedItemId).toBe('item-42');
+    expect(todo.linkedItemTitle).toBe('Semantic HTML');
+  });
+
+  it('treats a partial link (only one of templateId/itemId) as unlinked', async () => {
+    const store = createDailyTodoStore();
+    await store.setUser({ uid: 'u1' });
+    store.addTodo({ title: 'Task', durationMs: 60000 * 60, linkedTemplateId: 'frontend' });
+    const todo = store.getSnapshot().todos[0];
+    expect(todo.linkedTemplateId).toBeNull();
+    expect(todo.linkedItemId).toBeNull();
+  });
+
+  it('falls back to the todo title for linkedItemTitle when none is given', async () => {
+    const store = createDailyTodoStore();
+    await store.setUser({ uid: 'u1' });
+    store.addTodo({ title: 'My todo title', durationMs: 60000 * 60, linkedTemplateId: 'frontend', linkedItemId: 'item-1' });
+    expect(store.getSnapshot().todos[0].linkedItemTitle).toBe('My todo title');
   });
 
   it('clamps a too-short custom duration to the minimum', async () => {

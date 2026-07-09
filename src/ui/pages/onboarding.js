@@ -385,8 +385,11 @@ export function renderOnboarding(app, { user, store, dailyTodoStore }) {
   // Rendered on this page (not the roadmap dashboard) precisely because it's
   // independent of any single roadmap — this is the "all roadmaps" screen,
   // so Daily Todos lives here instead of looking like it belongs to whichever
-  // roadmap happens to be active (issue #56 follow-up).
-  const dailyTodoPanel = dailyTodoStore ? createDailyTodoPanel(dailyTodoStore) : null;
+  // roadmap happens to be active (issue #56 follow-up). `store` (roadmap) is
+  // also passed through so a todo linked to a roadmap topic (added via a
+  // button on that topic's row in dashboard.js) can resolve the linked
+  // roadmap's display name and mark that topic done/not-done on completion.
+  const dailyTodoPanel = dailyTodoStore ? createDailyTodoPanel(dailyTodoStore, store) : null;
   const backBtn = isSwitchingTemplate
     ? el('button', {
       type: 'button',

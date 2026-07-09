@@ -125,6 +125,7 @@ src/ui/components/brand.js       canonical brand mark/wordmark — createBrandMa
 src/ui/components/themeToggle.js reusable dark/light toggle button
 src/ui/components/dailyTodoPanel.js  "Today's Todos" card (issue #56) — add form, live countdown, collapsed Missed section, delete-when-finished, info button; mounted on onboarding.js (roadmap-agnostic), not dashboard.js
 src/ui/components/dailyTodoGuide.js  informational modal reachable from the Daily Todos card's ℹ button — explains the rolling-deadline/Missed/delete model (issue #56 follow-up)
+src/ui/components/addToDailyTodoModal.js  "Add to Today's Todos" duration prompt, opened from a roadmap checklist row's ⏱ button (issue #56 follow-up) — links the created todo back to that exact (templateId, itemId)
 src/ui/components/itemPanel.js   slide-in panel for editing a topic + its resources + notes
 src/ui/components/toast.js       transient toast notifications
 src/ui/components/buildYourOwnGuide.js  informational modal — "How do I build my own roadmap?"
@@ -221,13 +222,73 @@ small pill (`.daily-todo-nav-badge`, next to the theme toggle) showing the soone
 todo's live countdown (`"⏱ 46m left"`, or `"⏱ 46m left · 3 due"` once more than one is
 active), reusing the same `isExpired`/`remainingMs`/`formatRemaining`/`remainingBand`
 helpers and the same ok/warn/danger status-color families the todo list's own countdown
-uses. It's read-only and link-only (`<a href="#/onboarding">`) — no add/done/delete
-affordance lives here, only in `dailyTodoPanel.js` itself — so this is not a second copy
-of the editor, just a notification that one exists. Hidden entirely (`hidden` attribute,
-not just emptied) when there's no active todo. Subscribes to `dailyTodoStore` and ticks
-its own 30s `setInterval` (matching `dailyTodoPanel.js`'s own cadence), both cleaned up
-in `renderDashboard`'s existing route-cleanup return — same "Component subscription
+uses. It's read-only and link-only (`<a href="#/onboarding">`) — no done/delete/edit
+affordance lives here, only in `dailyTodoPanel.js` itself; the one exception is the
+row-level "link a topic to a todo" button below, which only ever *creates* a todo, never
+edits/completes/deletes one. Hidden entirely (`hidden` attribute, not just emptied) when
+there's no active todo. Subscribes to `dailyTodoStore` and ticks its own 30s
+`setInterval` (matching `dailyTodoPanel.js`'s own cadence), both cleaned up in
+`renderDashboard`'s existing route-cleanup return — same "Component subscription
 cleanup" rule as everything else with a subscription or timer.
+
+**Linking a roadmap topic to a Daily Todo, and completing either one from the other
+(issue #56 follow-up).** Every checklist row (`renderItemRow`, `dashboard.js`) has a ⏱
+button, next to Edit, opening `openAddToDailyTodoModal()`
+(`src/ui/components/addToDailyTodoModal.js` — same promise-based `{ ... } | null` contract
+as `openNewRoadmapModal()`) to ask how long you have; the topic's own title comes
+pre-filled (and editable — the todo doesn't have to be phrased exactly like the topic).
+Confirming calls `dailyTodoStore.addTodo()` with `linkedTemplateId`/`linkedItemId` set to
+the row's `(activeTemplateId, item.id)` pair, plus a `linkedItemTitle` display-time
+snapshot — **never just the topic's title**, since the same title can exist in more than
+one roadmap (the "Marketing Fundamentals" topic in a built-in template and a custom
+roadmap's own topic of the same name are different items) and only the id pair
+disambiguates which one a given todo actually points at.
+
+Completing that side of the link is where the real complexity lives, entirely in
+`dailyTodoPanel.js`'s `handleToggleDone()` and `roadmapStore.setItemDoneInTemplate()`:
+- **Checking** a linked todo (issue #56's original ask) asks for confirmation first
+  (`confirmDialog`, non-danger, naming the target roadmap: `"This will also mark this
+  topic done in <Roadmap Name>."`) — a cross-cutting side effect on data the user isn't
+  necessarily looking at deserves an explicit heads-up, same reasoning as any other
+  consequential confirmDialog in this app. Cancelling resets the checkbox's visual state
+  (the browser already flipped it before the handler ran) and touches nothing.
+- **Unchecking** a completed linked todo syncs back silently, no confirmation — this is
+  the safe, reversible direction, consistent with how every other done/not-done toggle
+  in the app already works.
+- Either direction calls `roadmapStore.setItemDoneInTemplate(templateId, itemId, done)`
+  — new, and the one genuinely new piece of surface area in `roadmapStore.js` for this
+  feature: it marks an item done/not-done in **any** template, not just the one currently
+  active, without ever silently switching the user's active roadmap out from under them.
+  Three cases, cheapest first: (1) the target template is already active — delegates to
+  `updateItem()` with the extra `completedViaTodoAt` bookkeeping folded into the same
+  patch, so the row's badge (below) gets its `structuralVersion` re-render for free, same
+  precedent as the `notes` field; (2) the target template is cached (visited this
+  session, just not on screen right now) — patches `roadmapCache` in place and persists
+  (local blob + `adapter.saveRoadmap`) directly, touching neither `activeTemplateId` nor
+  `structuralVersion`, since nothing currently rendered needs to change; (3) the target
+  template is cold (never touched this session) — one-shot reads it (Firebase first,
+  local blob fallback), patches, and persists the same way. Resolves `{ ok: false }` if
+  the item can't be found anywhere (its topic, or the whole roadmap, was deleted after
+  the todo was linked to it) — the todo still completes either way (the user's intent to
+  finish *something* should stand even if the link has gone stale), just with a softer
+  warning toast instead of the normal success one.
+- A completed link gets a small ⏱✓ indicator on the topic's own row
+  (`.completed-via-todo-indicator`, tooltip `"Completed via Today's Todo on <date>"`) —
+  a **new, dedicated field** (`item.completedViaTodoAt`), never appended to the topic's
+  own free-text `notes` field, so an auto-generated annotation never mixes with something
+  the user actually typed. Cleared automatically the moment either side is unchecked
+  again — `dashboard.js`'s own checklist-row toggle (`toggleDone()`) clears it when a
+  user unchecks a topic directly (not via the linked todo), and
+  `setItemDoneInTemplate(..., false)` clears it on the todo-driven uncheck path — so the
+  badge can never show a stale completion date on a topic that's since been reset. Note
+  the coupling only ever runs one direction structurally: `dailyTodoStore.js` never
+  imports `roadmapStore.js` (a todo can exist with no roadmap at all); it's
+  `dailyTodoPanel.js`, the UI layer, that's handed both stores and orchestrates between
+  them. Toggling a linked topic's `done` state directly on the dashboard (bypassing the
+  todo) does **not** reach back and flip the linked todo itself — only the
+  `completedViaTodoAt` annotation is kept honest that way, not full bidirectional sync of
+  `done` in both directions; if that's ever needed, it has to be built deliberately, not
+  assumed to already exist.
 
 **Storage adapter abstraction (`src/services/storage/`, issue #5, part 1).**
 `roadmapStore.js` never imports `firebase.js` directly for roadmap/meta reads and

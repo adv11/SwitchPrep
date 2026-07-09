@@ -1571,3 +1571,104 @@ The feature had no explanation anywhere in the app. Added an ℹ corner button n
 (`openDailyTodoGuide()`), a small informational modal — the same shape as
 `buildYourOwnGuide.js` — covering the rolling-deadline/preset-duration model and the
 done/Missed/delete behavior.
+
+### 2026-07-09 — PR #76 (same branch) — Daily Todos: distinct card styling + cross-roadmap header badge
+
+Two polish items applied to the already-shipped Daily Todos feature (issue #56), before
+the linking feature below.
+
+**Restyle.** `.daily-todo-panel` moved from plain-box styling to the same glass-card
+chrome as `.template-card` (`--surface-glass` background, `backdrop-filter`,
+`--radius-lg`, `--shadow-md`) so it visually belongs to the same card family as the
+template grid it sits above on `onboarding.js` — but with an `--accent` (not `--brand`)
+border and clock icon, since `--accent` was already the app's established "not the
+roadmap-teal" token (progress bar highlight, `.glow-accent`) rather than a new color
+invented for this. Inner rows (`add-row`/`list`/`missed-toggle`/`missed-list`) dropped
+their own individual borders/backgrounds so the whole thing reads as one card, divided
+by hairlines, instead of a heading floating above a stack of separate boxes.
+
+**Cross-roadmap header badge.** Todos are global, but a signed-in user's default view is
+the per-roadmap dashboard, not the onboarding picker where the actual list lives — so a
+user could have an urgent todo about to expire and never see it unless they happened to
+navigate back to "Switch template." `dashboard.js` re-imports `dailyTodoStore` (removed
+in the earlier placement-only pass, now back for this one read-only purpose) to render a
+small pill next to the theme toggle showing the soonest active todo's countdown,
+reusing the exact same helpers/color-band logic `dailyTodoPanel.js`'s own countdown
+uses. Deliberately read-only and link-only (`<a href="#/onboarding">`) at this point —
+no way to add/complete/delete a todo from the dashboard yet; see the next entry for where
+that boundary moved.
+
+### 2026-07-09 — PR #76 (same branch) — Link a roadmap topic to a Daily Todo (issue #56 follow-up)
+
+User-requested follow-up: let a Daily Todo be created *from* a roadmap topic instead of
+always typed from scratch, and let completing either one update the other — with the
+same rolling-deadline/no-server-cron/global-store architecture from the original issue
+untouched, just a new relationship layered on top.
+
+**The linking button and modal.** `renderItemRow` (`dashboard.js`) gained a ⏱ button
+next to Edit, opening a new promise-based modal, `openAddToDailyTodoModal()`
+(`src/ui/components/addToDailyTodoModal.js`, same `{ ... } | null` contract as
+`openNewRoadmapModal()`), pre-filled with the topic's own title (editable) and the usual
+preset/custom duration picker. Confirming calls `dailyTodoStore.addTodo()` with
+`linkedTemplateId`/`linkedItemId` set to `(activeTemplateId, item.id)` — deliberately the
+id pair, not the topic's title, since the same title can exist in more than one roadmap
+(a built-in template and a user's own custom roadmap could easily both have a
+"Fundamentals" topic) and only the id pair says which specific item a todo actually
+points at. `linkedItemTitle` is stored too, but purely as a display-time snapshot — never
+consulted to resolve the link itself, so a later rename of the source topic can't
+silently break it. `firebase/database.rules.json`'s `dailyTodos/$todoId` validator
+gained matching nullable-string entries for all three fields.
+
+**Completing a linked todo — the one genuinely hard part.** The obvious implementation
+(when a linked todo is checked, just call `roadmapStore.updateItem()`) only works if the
+linked topic's roadmap happens to be the one currently loaded into `roadmapStore`'s
+in-memory `items` — which is almost never guaranteed, since a todo linked yesterday to a
+"Frontend" topic can easily get completed while the user is looking at their "Data
+Scientist" dashboard today. Silently switching the user's active roadmap out from under
+them to apply the update was ruled out (confirmed with the user before building this) as
+too disruptive. Instead, `roadmapStore.js` gained `setItemDoneInTemplate(templateId,
+itemId, done)`, a new low-level entry point with three cases, cheapest first:
+1. **Active template** — the fast path, just `updateItem()` with `completedViaTodoAt`
+   folded into the same patch (making the patch non-cosmetic — see the `structuralVersion`
+   section above — so the row's new badge, below, gets its re-render for free, exactly
+   like the `notes` field already does).
+2. **Cached, not active** (visited earlier this session, e.g. via `switchRoadmap`, but
+   not the one on screen right now) — patches `roadmapCache[templateId]` in place and
+   persists (local blob + `adapter.saveRoadmap`) directly, without touching
+   `activeTemplateId`, `items`, `dirty`, or `structuralVersion` — none of those describe
+   what's currently rendered, so there's nothing to notify.
+3. **Cold** (never touched this session) — a one-shot read (Firebase first, falling back
+   to the local blob, mirroring `resolveRoadmapItems`'s own fallback order), patch,
+   persist the same way. Never seeds a not-yet-started template — a linked todo can only
+   ever point at an item that already exists somewhere; if it doesn't (case 4: the topic
+   or its whole roadmap was deleted after the link was made), resolves `{ ok: false }`
+   and the caller still lets the todo itself complete, just with a softer toast instead
+   of pretending the roadmap side succeeded.
+
+**Confirmation and sync direction — settled with the user before implementation** (the
+original ask specifically wanted a "please confirm" step): checking a linked todo shows
+`confirmDialog` naming the target roadmap before applying anything, since it's a
+cross-cutting write to data the user isn't necessarily looking at; unchecking one syncs
+back silently, since that's the safe/reversible direction and matches how every other
+done toggle in the app already behaves (no confirmation to *undo* something). Both
+directions are wired only from `dailyTodoPanel.js`'s `handleToggleDone()`, which is
+handed both `dailyTodoStore` and `roadmapStore` (`onboarding.js` passes its own `store`
+through as the panel's second argument) — `dailyTodoStore.js` itself never imports
+`roadmapStore.js`, keeping a todo's ability to exist standalone (no link at all)
+structurally guaranteed rather than incidental.
+
+**The completion badge — a new field, not a notes append.** `item.completedViaTodoAt`
+(set alongside `done: true` by `setItemDoneInTemplate`, cleared alongside `done: false`
+by the same function, and also cleared by `dashboard.js`'s own checklist-row
+`toggleDone()` when a user unchecks a topic directly rather than via its linked todo)
+drives a small ⏱✓ indicator, `.completed-via-todo-indicator`, next to the row's
+notes/resource icons. Considered — and rejected — appending a sentence to the topic's
+existing `notes` field (issue #15) instead of adding a new field: notes is free text the
+user thinks of as their own, and silently editing it out from under them for a
+system-generated annotation was judged worse than one more small field. This is
+deliberately **not** full bidirectional sync: toggling a linked topic's `done` state
+directly on the dashboard does not reach back and flip the linked todo — only the
+`completedViaTodoAt` annotation is kept honest in that direction. If two-way sync is ever
+wanted, it needs to be built on purpose (most likely: `roadmapStore.js` gaining a way to
+notify `dailyTodoStore.js` of a linked-item change, inverting today's one-directional
+`dailyTodoPanel.js → both stores` shape), not assumed to already exist.

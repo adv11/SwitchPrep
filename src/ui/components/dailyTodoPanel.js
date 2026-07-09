@@ -4,19 +4,37 @@ import { confirmDialog } from './confirmDialog.js';
 import { openDailyTodoGuide } from './dailyTodoGuide.js';
 import { isExpired, remainingMs, formatRemaining, remainingBand } from '../utils/dailyTodo.js';
 import { MAX_TODO_TITLE_LENGTH, MAX_ACTIVE_TODOS, DURATION_PRESETS, MIN_DURATION_MS, MAX_DURATION_MS } from '../../core/dailyTodo/limits.js';
+import { getTemplate } from '../../data/templates/index.js';
 
 const CUSTOM_VALUE = 'custom';
 const DEFAULT_PRESET_MS = DURATION_PRESETS.find(p => p.label === '24 hours')?.ms || DURATION_PRESETS[0].ms;
 // 30s resolution is enough for hour/minute-granularity countdown text.
 const TICK_MS = 30000;
 
+// Resolves a templateId to a display name for the confirm dialog/toast/row
+// label — built-in templates come from the registry, a custom roadmap's
+// name lives in roadmapStore's own customRoadmaps meta (issue #4). Returns
+// null if roadmapStore wasn't provided or the roadmap can no longer be
+// found (e.g. a custom roadmap the user has since deleted).
+function resolveRoadmapName(roadmapStore, templateId) {
+  if (!roadmapStore || !templateId) return null;
+  if (roadmapStore.isCustomRoadmapId(templateId)) {
+    const custom = roadmapStore.getSnapshot().customRoadmaps.find(r => r.id === templateId);
+    return custom ? custom.title : null;
+  }
+  return getTemplate(templateId)?.name || null;
+}
+
 // A new instance of the exact hazard CLAUDE.md's "Component subscription
 // cleanup" rule already covers for store subscriptions — a setInterval left
 // running after this panel's DOM node is removed leaks just like an
 // unremoved subscription. Returns the panel node with `_cleanup` set
 // (matching createThemeToggle's convention), wired into dashboard.js's route
-// cleanup.
-export function createDailyTodoPanel(store) {
+// cleanup. `roadmapStore` (issue #56 follow-up) is optional — a todo can
+// exist standalone (no linkedTemplateId/linkedItemId) and never needs it;
+// it's only consulted when completing/reverting a todo that was created via
+// a roadmap topic's "add to Today's Todos" button (dashboard.js).
+export function createDailyTodoPanel(store, roadmapStore) {
   const titleInput = el('input', {
     className: 'field-input compact inline-add',
     placeholder: 'Add a todo, due in…',
@@ -120,24 +138,72 @@ export function createDailyTodoPanel(store) {
     store.removeTodo(todo.id);
   }
 
+  // Checking a todo linked to a roadmap topic (issue #56 follow-up) also
+  // marks that topic done in its own roadmap — which can be a roadmap the
+  // user isn't even looking at right now (roadmapStore.setItemDoneInTemplate
+  // handles that regardless of which template is currently active). Since
+  // this is a cross-cutting side effect the user might not expect, checking
+  // (never unchecking — that direction is the safe, reversible one) is
+  // gated behind an explicit confirmation naming the target roadmap, same
+  // convention as any other consequential action in this app
+  // (confirmDialog, not a native confirm()). Cancelling resets the
+  // checkbox's visual state, since the browser already flipped it before
+  // this handler ran and the store was never actually updated.
+  async function handleToggleDone(todo, checkboxEl) {
+    const nextDone = !todo.done;
+    const isLinked = !!(todo.linkedTemplateId && todo.linkedItemId);
+
+    if (isLinked && nextDone) {
+      const roadmapName = resolveRoadmapName(roadmapStore, todo.linkedTemplateId) || 'that roadmap';
+      if (!await confirmDialog({
+        title: `Complete "${todo.title}"?`,
+        message: `This will also mark this topic done in ${roadmapName}.`,
+        confirmText: 'Complete',
+        danger: false
+      })) {
+        checkboxEl.checked = todo.done;
+        return;
+      }
+    }
+
+    store.setDone(todo.id, nextDone);
+
+    if (isLinked && roadmapStore) {
+      const roadmapName = resolveRoadmapName(roadmapStore, todo.linkedTemplateId) || 'that roadmap';
+      const result = await roadmapStore.setItemDoneInTemplate(todo.linkedTemplateId, todo.linkedItemId, nextDone);
+      if (result.ok) {
+        showToast(
+          nextDone ? `Marked "${result.title}" done in ${roadmapName}` : `Reverted "${result.title}" in ${roadmapName}`,
+          'success'
+        );
+      } else {
+        showToast(`Couldn't find that topic in ${roadmapName} anymore — the todo itself is still updated.`, 'error');
+      }
+    }
+  }
+
   function renderRow(todo, now) {
     const expired = isExpired(todo, now);
     const ms = remainingMs(todo, now);
     const band = todo.done ? null : remainingBand(ms);
     const isFinished = todo.done || expired;
+    const isLinked = !!(todo.linkedTemplateId && todo.linkedItemId);
+    const roadmapName = isLinked ? resolveRoadmapName(roadmapStore, todo.linkedTemplateId) : null;
+    const checkboxInput = el('input', {
+      type: 'checkbox',
+      checked: todo.done ? 'checked' : null,
+      'aria-label': `Mark "${todo.title}" ${todo.done ? 'not done' : 'done'}`
+    });
+    checkboxInput.addEventListener('change', () => handleToggleDone(todo, checkboxInput));
     return el('div', {
       className: `daily-todo-item ${todo.done ? 'done' : ''}`,
       dataset: { id: todo.id }
     }, [
       el('label', { className: 'daily-todo-checkbox' }, [
-        el('input', {
-          type: 'checkbox',
-          checked: todo.done ? 'checked' : null,
-          'aria-label': `Mark "${todo.title}" ${todo.done ? 'not done' : 'done'}`,
-          onChange: () => store.setDone(todo.id, !todo.done)
-        }),
-        el('span', { className: 'daily-todo-title', text: todo.title })
-      ]),
+        checkboxInput,
+        el('span', { className: 'daily-todo-title', text: todo.title }),
+        roadmapName ? el('span', { className: 'daily-todo-linked-badge', title: `Linked to a topic in ${roadmapName}`, text: `via ${roadmapName}` }) : null
+      ].filter(Boolean)),
       !todo.done ? el('span', { className: `daily-todo-remaining ${band}`, text: formatRemaining(ms) }) : null,
       isFinished ? el('button', {
         type: 'button',

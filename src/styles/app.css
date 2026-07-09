@@ -888,6 +888,16 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 }
 .daily-todo-checkbox input[type='checkbox'] { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; }
 .daily-todo-title { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.daily-todo-linked-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--brand-dark);
+  background: var(--brand-light);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
 
 .daily-todo-remaining {
   flex-shrink: 0;
@@ -1105,6 +1115,18 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 }
 .notes-indicator:hover { opacity: 1; transform: translateY(-1px); }
 .notes-indicator:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); border-radius: 4px; }
+
+/* Set when a topic was last marked done via a linked Today's Todo (issue
+   #56 follow-up) — cleared the moment the topic (or the linked todo) is
+   unchecked again, so this never shows a stale completion date. Not
+   interactive (no onClick) — the title/aria-label attribute alone carries
+   the date, same as a native tooltip. */
+.completed-via-todo-indicator {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--accent);
+  cursor: default;
+}
 
 .check-actions { opacity: 0; transition: opacity 140ms ease; }
 .check-item:hover .check-actions, .check-item:focus-within .check-actions { opacity: 1; }

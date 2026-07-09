@@ -182,7 +182,14 @@ export function createDailyTodoStore() {
   // Returns false (mutating nothing) on an invalid title or once the active
   // (not-done, not-expired) count already reached MAX_ACTIVE_TODOS — callers
   // must check the return value, same convention as roadmapStore's addItem.
-  function addTodo({ title, durationMs }) {
+  // `linkedTemplateId`/`linkedItemId` (issue #56 follow-up) let a todo be
+  // created from a roadmap topic ("add this topic to Today's Todos") rather
+  // than typed from scratch — both are required together to identify the
+  // item unambiguously, since the same topic title can exist in more than
+  // one roadmap and only the (templateId, itemId) pair pins down which one.
+  // `linkedItemTitle` is a display-time snapshot only (survives the source
+  // item being renamed or deleted later) — never used to resolve the link.
+  function addTodo({ title, durationMs, linkedTemplateId = null, linkedItemId = null, linkedItemTitle = null }) {
     const trimmedTitle = (title || '').trim();
     if (!trimmedTitle || trimmedTitle.length > MAX_TODO_TITLE_LENGTH) return false;
     const clampedDuration = clampDurationMs(durationMs);
@@ -192,6 +199,7 @@ export function createDailyTodoStore() {
     const activeCount = Object.values(items).filter(t => !t.done && !isExpired(t, now)).length;
     if (activeCount >= MAX_ACTIVE_TODOS) return false;
 
+    const isLinked = !!(linkedTemplateId && linkedItemId);
     const id = genId();
     items[id] = {
       id,
@@ -199,7 +207,10 @@ export function createDailyTodoStore() {
       createdAt: now,
       expiresAt: now + clampedDuration,
       done: false,
-      doneAt: null
+      doneAt: null,
+      linkedTemplateId: isLinked ? linkedTemplateId : null,
+      linkedItemId: isLinked ? linkedItemId : null,
+      linkedItemTitle: isLinked ? (linkedItemTitle || trimmedTitle) : null
     };
     queueSave();
     return true;

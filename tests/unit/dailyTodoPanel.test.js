@@ -40,6 +40,12 @@ function createFakeStore(initialTodos = []) {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(1_700_000_000_000);
+  // Only clear stray modal overlays a previous test left open — toast.js
+  // caches its `.toast-stack` root at module scope (no vi.resetModules()
+  // here, since this file statically imports createDailyTodoPanel), so a
+  // blanket document.body.innerHTML reset would detach that cached root
+  // from the document without toast.js ever knowing to recreate it.
+  document.querySelectorAll('.modal-overlay').forEach(el => el.remove());
 });
 
 afterEach(() => {
@@ -181,6 +187,149 @@ describe('createDailyTodoPanel', () => {
 
     expect(document.querySelector('.modal-overlay[aria-label*="Today\'s Todos"]')).toBeTruthy();
     document.querySelector('.modal-overlay [data-action], .modal-overlay .btn-primary').click();
+    node._cleanup();
+  });
+});
+
+// issue #56 follow-up — a todo created via a roadmap topic's "add to
+// Today's Todos" button carries linkedTemplateId/linkedItemId, and
+// completing/reverting it must also update that topic in its own roadmap.
+function createFakeRoadmapStore({ ok = true, title = 'Semantic HTML' } = {}) {
+  return {
+    isCustomRoadmapId: id => typeof id === 'string' && id.startsWith('croadmap-'),
+    getSnapshot: () => ({ customRoadmaps: [] }),
+    setItemDoneInTemplate: vi.fn(() => Promise.resolve(ok ? { ok: true, title } : { ok: false, title: null }))
+  };
+}
+
+function linkedTodo(overrides = {}) {
+  const now = Date.now();
+  return {
+    id: 't0',
+    title: 'Semantic HTML',
+    createdAt: now,
+    expiresAt: now + 60 * 60 * 1000,
+    done: false,
+    doneAt: null,
+    linkedTemplateId: 'frontend',
+    linkedItemId: 'item-1',
+    linkedItemTitle: 'Semantic HTML',
+    ...overrides
+  };
+}
+
+async function flushMicrotasks() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+describe('createDailyTodoPanel — linked-topic completion (issue #56 follow-up)', () => {
+  it('renders a "via <roadmap>" badge for a linked todo', () => {
+    const store = createFakeStore([linkedTodo()]);
+    const roadmapStore = createFakeRoadmapStore();
+    const node = createDailyTodoPanel(store, roadmapStore);
+
+    expect(node.querySelector('.daily-todo-linked-badge').textContent).toBe('via Frontend Developer');
+    node._cleanup();
+  });
+
+  it('checking a linked todo asks for confirmation naming the roadmap before completing it', async () => {
+    const store = createFakeStore([linkedTodo()]);
+    const roadmapStore = createFakeRoadmapStore();
+    const node = createDailyTodoPanel(store, roadmapStore);
+
+    const checkbox = node.querySelector('input[type="checkbox"]');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    const dialog = document.querySelector('.modal-overlay[aria-label*="Complete"]');
+    expect(dialog).toBeTruthy();
+    expect(dialog.textContent).toContain('Frontend Developer');
+    // Not applied yet — still waiting on confirmation.
+    expect(roadmapStore.setItemDoneInTemplate).not.toHaveBeenCalled();
+    document.querySelector('.modal-overlay [data-action="cancel"]').click();
+    node._cleanup();
+  });
+
+  it('confirming marks the todo done AND updates the linked roadmap topic, then toasts success', async () => {
+    const store = createFakeStore([linkedTodo()]);
+    const roadmapStore = createFakeRoadmapStore({ title: 'Semantic HTML' });
+    const node = createDailyTodoPanel(store, roadmapStore);
+
+    node.querySelector('input[type="checkbox"]').checked = true;
+    node.querySelector('input[type="checkbox"]').dispatchEvent(new Event('change'));
+    document.querySelector('.modal-overlay [data-action="confirm"]').click();
+    await flushMicrotasks();
+
+    expect(store.getSnapshot().todos[0].done).toBe(true);
+    expect(roadmapStore.setItemDoneInTemplate).toHaveBeenCalledWith('frontend', 'item-1', true);
+    expect(document.querySelector('.toast-stack').textContent).toContain('Marked "Semantic HTML" done in Frontend Developer');
+    node._cleanup();
+  });
+
+  it('cancelling the confirmation leaves the todo (and the roadmap) untouched', async () => {
+    const store = createFakeStore([linkedTodo()]);
+    const roadmapStore = createFakeRoadmapStore();
+    const node = createDailyTodoPanel(store, roadmapStore);
+
+    const checkbox = node.querySelector('input[type="checkbox"]');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    document.querySelector('.modal-overlay [data-action="cancel"]').click();
+    await flushMicrotasks();
+
+    expect(store.getSnapshot().todos[0].done).toBe(false);
+    expect(checkbox.checked).toBe(false);
+    expect(roadmapStore.setItemDoneInTemplate).not.toHaveBeenCalled();
+    node._cleanup();
+  });
+
+  it('unchecking a completed linked todo syncs back to the roadmap without a confirmation dialog', async () => {
+    const store = createFakeStore([linkedTodo({ done: true, doneAt: Date.now() })]);
+    const roadmapStore = createFakeRoadmapStore({ title: 'Semantic HTML' });
+    const node = createDailyTodoPanel(store, roadmapStore);
+
+    const checkbox = node.querySelector('input[type="checkbox"]');
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event('change'));
+    await flushMicrotasks();
+
+    expect(document.querySelector('.modal-overlay[aria-label*="Complete"]')).toBeNull();
+    expect(store.getSnapshot().todos[0].done).toBe(false);
+    expect(roadmapStore.setItemDoneInTemplate).toHaveBeenCalledWith('frontend', 'item-1', false);
+    expect(document.querySelector('.toast-stack').textContent).toContain('Reverted "Semantic HTML" in Frontend Developer');
+    node._cleanup();
+  });
+
+  it('still marks the todo done, with a warning toast, when the linked topic no longer exists', async () => {
+    const store = createFakeStore([linkedTodo()]);
+    const roadmapStore = createFakeRoadmapStore({ ok: false });
+    const node = createDailyTodoPanel(store, roadmapStore);
+
+    node.querySelector('input[type="checkbox"]').checked = true;
+    node.querySelector('input[type="checkbox"]').dispatchEvent(new Event('change'));
+    document.querySelector('.modal-overlay [data-action="confirm"]').click();
+    await flushMicrotasks();
+
+    expect(store.getSnapshot().todos[0].done).toBe(true);
+    expect(document.querySelector('.toast-stack').textContent).toContain("Couldn't find that topic in Frontend Developer anymore");
+    node._cleanup();
+  });
+
+  it('an unlinked todo never opens a confirmation dialog or touches roadmapStore', async () => {
+    const store = createFakeStore();
+    store.addTodo({ title: 'Plain task', durationMs: 60 * 60 * 1000 });
+    const roadmapStore = createFakeRoadmapStore();
+    const node = createDailyTodoPanel(store, roadmapStore);
+
+    node.querySelector('input[type="checkbox"]').checked = true;
+    node.querySelector('input[type="checkbox"]').dispatchEvent(new Event('change'));
+    await flushMicrotasks();
+
+    expect(document.querySelector('.modal-overlay')).toBeNull();
+    expect(roadmapStore.setItemDoneInTemplate).not.toHaveBeenCalled();
+    expect(store.getSnapshot().todos[0].done).toBe(true);
     node._cleanup();
   });
 });
