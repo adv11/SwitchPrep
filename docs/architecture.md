@@ -2326,3 +2326,53 @@ the card settles fully open with its first item never clipped; separately confir
 onboarding sign-out button shows a confirmation dialog and the sidebar's now does too
 even for a guest with no unsaved changes (previously it wouldn't have). `npm test` (512
 passed, 9 new) and `npm run lint` (0 errors) green.
+
+### 2026-07-10 — PR TBD — Resource panel revamp, issue #12 Part B
+
+Closes out issue #12 (Part A, the broken Add-button import fix, shipped separately in
+PR #29). New `src/ui/utils/linkDetector.js`: `detectLinkType(url)`, a pure/DOM-free
+module matching a URL's hostname/path against 7 known resource types
+(youtube/github/notion/google-doc/google-drive/medium/stackoverflow), falling back to
+`'article'` for anything else — including any non-http(s) protocol or unparseable
+string, so it's safe to call on unvalidated store data. `LINK_TYPE_META` centralizes
+each type's display icon/label/badge class so `itemPanel.js`'s resource card and
+`dashboard.js`'s resource-count tooltip breakdown both read from one source instead of
+duplicating a switch statement.
+
+`itemPanel.js`'s `renderResources()` was rebuilt from a plain editable label+URL row
+(`.resource-row`) into a `.resource-card` with a `.link-badge` header — the class
+rename means any e2e/unit test asserting on the old selector needed updating
+(`tests/e2e/auth.test.js`'s resource-add spec). Piggybacked onto the same function: an
+existing resource's URL input now validates via `isValidUrl()` on `blur`, showing an
+inline `.resource-url-warning` for an invalid value — this was the one remaining gap
+from issue #22's XSS hardening pass, which only ever validated a *newly-added*
+resource's URL, not one edited in place afterward.
+
+`dashboard.js`'s checklist-row `resource-count` badge logic was pulled out into a new
+module-scope `buildResourceCountBadge(item, onOpen)` (rather than growing the already
+lint-flagged `renderItemRow` further) — it now prefixes the badge with the "most
+valuable" detected type's icon (video > repo > page > doc > file > article > answer >
+link priority order) and attaches a hover/focus tooltip via `attachTooltip()`
+(`tooltip.js`, part of Phase 3's component library — this is its first real call site)
+showing the full per-type breakdown, e.g. `▶ 2 videos · ⭐ 1 repo · 🔗 1 link`.
+
+No `roadmapStore.js`/Firebase schema change — `resource.label`/`resource.url` are
+unchanged; the link type is always derived at render time from the existing `url`
+field, never persisted.
+
+**Follow-up, reported live: the first checklist row's resource-count tooltip rendered
+with its top sliced off.** Not a z-index/paint-order bug, despite looking like one —
+confirmed by cranking `tooltip-bubble`'s z-index to `99999` live with zero effect.
+`.section-label` is `position: sticky`, and its containing block is `.phase-card`
+(`overflow: hidden` for its rounded corners/priority-accent border, and also
+transformed on `:hover`) — a sticky element gets its own layer promoted relative to
+that containing block, and Chromium paints that layer ahead of ordinary content inside
+the same block *regardless of declared z-index*. Proven by temporarily forcing
+`.section-label` to `position: static`: the tooltip then rendered correctly, isolating
+the cause to the label's stickiness rather than the tooltip's own stacking. `tooltip.js`
+now computes the bubble's candidate "above" rect and checks it against every currently
+visible `.section-label`'s bounding rect, flipping to `.tooltip-below` on overlap — in
+addition to (not instead of) the existing viewport-room check. `.section-label` is the
+only sticky element that can share a positioning context with a tooltip trigger
+anywhere in this app today; a future tooltip caller that needs to coexist with a
+different sticky element should extend that selector, not redesign the approach.
