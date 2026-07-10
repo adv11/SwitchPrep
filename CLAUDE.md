@@ -96,7 +96,7 @@ src/services/localStorageKeys.js  canonical `ascent-*` localStorage/sessionStora
 src/services/migration.js     one-time migration off the pre-rename `switchprep-*` key prefix
 src/services/roadmapStore.js  in-memory roadmap store — see .claude/rules/roadmap-store.md
 src/services/dailyTodoStore.js  in-memory Daily Todos store — see .claude/rules/roadmap-store.md
-src/services/storage/         storage backend interface + FirebaseAdapter + LocalStorageAdapter + adapterFactory — see .claude/rules/roadmap-store.md
+src/services/storage/         storage backend interface + FirebaseAdapter (+ withTimeout.js) + LocalStorageAdapter + adapterFactory — see .claude/rules/roadmap-store.md
 src/services/theme.js         dark/light theme state — see .claude/rules/ui-styling.md
 src/services/themeBootstrap.js  synchronous classic script, no-FOUC — see .claude/rules/ui-styling.md
 src/ui/router.js              tiny hash router (registerRoute/navigate/startRouter)

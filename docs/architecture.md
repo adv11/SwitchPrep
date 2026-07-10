@@ -2021,3 +2021,56 @@ button coexist without overlapping (`has-toggle` offset), and the submit-button
 spinner appears and the button disables correctly under a throttled network before
 restoring on error. Full 11-width/2-theme `verify-changes` matrix run on both pages —
 zero horizontal overflow at any width.
+
+#### Follow-up, same PR — marketing panel redesign + roadmap-switch hang fix
+
+Two rounds of live user feedback on this same PR before merge, both addressed here
+rather than as a separate follow-up PR since #95 hadn't merged yet.
+
+**Marketing panel looked sparse and unfinished on wide monitors.** The original cut's
+content (brand mark + 3 emoji-icon value props) sat pinned to the top-left of an
+increasingly empty flat-gradient column as viewport width grew — confirmed via a
+screenshot at ~2000px showing most of the panel as dead space. Rebuilt
+`authMarketingPanel.js`: the product's actual tagline ("Engineer your next move.",
+already in `index.html`'s meta description) as a large display-font headline instead
+of empty space — a real "quote" from the product itself, not the fabricated customer
+testimonial the original spec called for and this PR already declined to build; a
+one-sentence subhead; the same 3 value props now illustrated with minimal custom SVG
+line icons (`ICONS.track`/`sync`/`focus`, Feather/Lucide-style, `currentColor` strokes)
+instead of emoji, which render inconsistently across OS/browser combinations and read
+as placeholder rather than finished on the one surface whose entire job is a strong
+first impression — every other emoji-glyph usage across the app is intentionally
+unaffected; and a real stat line derived from `TEMPLATES.length` (never a hardcoded
+number that could drift). `app.css`: `.auth-marketing-content` uses
+`justify-content: center` to distribute the headline/subhead/features block across the
+full available height instead of one small flex item center-aligning in isolation, and
+`.auth-marketing` itself gained `align-items: center` so the content column stays
+visually balanced in the middle of the panel at any width rather than pinned to the
+left edge — this, not shrinking the panel, is what actually fixed "too big/too empty"
+at up to 2560px (confirmed via screenshot). A repeating-diagonal-line CSS gradient
+(`.auth-marketing-bg-pattern`, no image asset) fills the background at low opacity
+instead of a flat void.
+
+**Roadmap switching could hang indefinitely — a real, reproduced regression-adjacent
+bug, not the auth redesign.** Traced through `FirebaseAdapter.js`: none of its one-time
+`get()`/`set()`/`update()`/`remove()` calls have a timeout, and Firebase's Realtime
+Database SDK doesn't provide one — a stalled connection (tested by throttling network
+conditions and, separately, by reasoning through `switchRoadmap()`'s unprotected
+`await flush()`/`await adapter.saveMeta()` calls) leaves the promise pending forever
+with nothing to catch. New `src/services/storage/withTimeout.js` (unit-tested: settles
+before deadline → passes through; never settles → rejects at 15s) wraps every one-time
+call in `FirebaseAdapter.js`; every caller already try/catches these and falls back to
+a local blob or fresh seed (see `.claude/rules/roadmap-store.md`), so this needed zero
+changes anywhere else. Also fixed a quieter, related bug in the same pass:
+`onboarding.js`'s `pickTemplate()`/`pickCustomRoadmap()` catch blocks silently reset
+the UI on failure with no message — the cards just re-enable, indistinguishable from
+success unless you're watching closely — now both show an error toast, matching
+`handleCreate()`/`handleImport()`'s existing pattern. New unit test in
+`onboarding.test.js` covers the toast; `withTimeout.js` has its own dedicated suite.
+
+Verified live: reproduced the hang under throttled network + a deliberately-dirtied
+unsaved edit before switching, confirmed normal switching still completes in ~1-3s
+after the fix (no regression), and reran the full 11-width/2-theme `verify-changes`
+matrix plus dark-mode/sign-up screenshots on the redesigned panel — zero horizontal
+overflow, zero console errors. `npm test` (492 passed, 5 new) and `npm run lint`
+(0 errors) green.

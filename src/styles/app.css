@@ -414,28 +414,94 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   z-index: 0;
 }
 
-/* Left marketing panel (issue #6 Phase 5.1). Dark brand-gradient background
-   regardless of the site's own light/dark theme — this panel is intentionally
-   always-dark, matching the spec's "dark background with brand gradient." */
+/* Left marketing panel (issue #6 Phase 5, redesigned in a follow-up after
+   user feedback: the first cut looked sparse/empty on wide monitors —
+   content pinned to the top-left of a huge flat-gradient column, plain
+   emoji icons read as placeholder rather than finished). Dark brand-gradient
+   background regardless of the site's own light/dark theme — this panel is
+   intentionally always-dark, matching the spec's "dark background with
+   brand gradient." */
 .auth-marketing {
   background: linear-gradient(160deg, var(--brand-700) 0%, var(--brand-600) 55%, var(--brand-500) 100%);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: max(48px, env(safe-area-inset-top)) 48px max(48px, env(safe-area-inset-bottom)) max(48px, env(safe-area-inset-left));
+  padding: max(40px, env(safe-area-inset-top)) 56px max(40px, env(safe-area-inset-bottom)) max(56px, env(safe-area-inset-left));
   position: relative;
   overflow: hidden;
 }
-.auth-marketing-inner { position: relative; z-index: 1; max-width: 420px; }
+/* Subtle repeating diagonal-line texture — fills the panel's empty space
+   with an intentional, low-opacity design element instead of a flat void.
+   A single CSS gradient, no image asset. */
+.auth-marketing-bg-pattern {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0px, rgba(255, 255, 255, 0.06) 1px, transparent 1px, transparent 28px);
+  pointer-events: none;
+}
+.auth-marketing-inner {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+}
 /* Scoped override — .brand-name/.brand-tagline normally inherit --ink (dark
    text), unreadable on this always-dark panel regardless of site theme. */
 .auth-marketing .brand-name, .auth-marketing .brand-tagline { color: #fff; }
 .auth-marketing .brand-tagline { opacity: 0.75; }
-.auth-marketing-brand { margin-bottom: 48px; }
-.auth-marketing-values { display: grid; gap: 28px; list-style: none; padding: 0; margin: 0; }
+.auth-marketing-brand { margin-bottom: 56px; }
+
+/* Vertically centers the headline/subhead/features block in whatever room
+   is left between the brand mark (top) and the stat line (bottom), instead
+   of the whole panel just center-aligning one small flex item — this is
+   what actually fixes the "too much empty space" complaint on tall/wide
+   viewports, not a smaller panel. */
+.auth-marketing-content { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 28px; }
+
+.auth-marketing-headline {
+  margin: 0;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: clamp(32px, 3.2vw, 46px);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+.auth-marketing-subhead {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: var(--text-md);
+  line-height: var(--leading-relaxed);
+  max-width: 40ch;
+}
+
+.auth-marketing-values { display: grid; gap: 22px; list-style: none; padding: 0; margin: 8px 0 0; }
 .auth-marketing-value { display: flex; gap: 16px; align-items: flex-start; }
-.auth-marketing-value-icon { font-size: 24px; line-height: 1; flex-shrink: 0; }
-.auth-marketing-value-title { display: block; color: #fff; font-weight: 800; font-size: var(--text-md); margin-bottom: 4px; }
-.auth-marketing-value-text { display: block; color: rgba(255, 255, 255, 0.75); font-size: var(--text-sm); line-height: var(--leading-normal); }
+.auth-marketing-value-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.auth-marketing-value-title { display: block; color: #fff; font-weight: 800; font-size: var(--text-md); margin-bottom: 2px; }
+.auth-marketing-value-text { display: block; color: rgba(255, 255, 255, 0.72); font-size: var(--text-sm); line-height: var(--leading-normal); }
+
+.auth-marketing-stat {
+  position: relative;
+  z-index: 1;
+  margin: 32px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
 
 .auth-page-inner {
   width: min(440px, 100%);
