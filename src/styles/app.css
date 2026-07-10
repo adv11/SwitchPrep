@@ -923,6 +923,23 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .app-sidebar.collapsed .nav-item { justify-content: center; }
 .app-sidebar.collapsed .app-sidebar-collapse-btn { transform: scaleX(-1); }
 
+/* Issue #102 — an icon-only rail (this 64px desktop-collapsed state, or the
+   automatic 640-1023px tablet rail below) is too narrow for the identity
+   avatar and sign-out button to sit side by side (footer's default row
+   layout): 64px width minus this rule's own left/right padding leaves ~32px
+   of content width, less than the avatar (28px) + gap + icon button (36px)
+   combined, so the two visually overlapped instead of wrapping. Stack them
+   vertically and shrink the sign-out button to match the avatar's footprint
+   whenever the rail is icon-only — never let this rule apply to the full
+   (expanded) sidebar width, where the row layout is correct. */
+.app-sidebar.collapsed .app-sidebar-footer {
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+.app-sidebar.collapsed .app-sidebar-identity { justify-content: center; padding: var(--space-1) 0; }
+.app-sidebar.collapsed .app-sidebar-signout { width: 32px; height: 32px; font-size: var(--text-md); }
+
 .app-sidebar-backdrop {
   display: none;
   position: fixed;
@@ -1028,6 +1045,39 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   .app-sidebar .brand-tagline { display: none; }
   .app-sidebar .nav-item { justify-content: center; }
   .app-sidebar-collapse-btn { display: none; }
+
+  /* Issue #102 — same icon-rail footer overlap this width hits as the
+     desktop `.collapsed` state above: stack the avatar and sign-out button
+     instead of letting them collide in the narrow rail. */
+  .app-sidebar-footer { flex-direction: column; align-items: center; gap: var(--space-1); }
+  .app-sidebar-identity { justify-content: center; padding: var(--space-1) 0; }
+  .app-sidebar-signout { width: 32px; height: 32px; font-size: var(--text-md); }
+
+  /* Issue #102 — the manual desktop collapse toggle is hidden at this width
+     (the rail here is automatic, not user-togglable) and the hamburger below
+     used to be scoped to <640px only, leaving 640-1023px with no way to see
+     nav labels or the account email. Reuse the same `_toggleMobile()` drawer
+     mechanism (`sidebar.js`) the phone breakpoint already has — the
+     hamburger becomes visible here too, and opening it expands the rail into
+     the same full overlay drawer instead of staying icon-only. */
+  .app-topbar-hamburger { display: inline-flex; }
+  .app-sidebar.mobile-open {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 240px;
+    padding: var(--space-5) var(--space-4);
+    z-index: 200;
+  }
+  .app-sidebar.mobile-open .nav-item-label,
+  .app-sidebar.mobile-open .app-sidebar-user-email,
+  .app-sidebar.mobile-open .brand-name,
+  .app-sidebar.mobile-open .brand-tagline { display: block; }
+  .app-sidebar.mobile-open .nav-item { justify-content: flex-start; }
+  .app-sidebar.mobile-open .app-sidebar-footer { flex-direction: row; align-items: center; gap: var(--space-2); }
+  .app-sidebar.mobile-open .app-sidebar-identity { justify-content: flex-start; padding: var(--space-1); }
+  .app-sidebar.mobile-open .app-sidebar-signout { width: 36px; height: 36px; font-size: 22px; }
 }
 
 /* Mobile (<640px) — sidebar hidden by default, opens as a drawer on hamburger tap. */
