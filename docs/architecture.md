@@ -1975,3 +1975,49 @@ throwaway Playwright driver (not committed) drove a real guest session through s
 `opacity` behavior and 44px touch targets on an emulated touch device, and confirmed
 the CountUp/ring/stagger/sticky-header/search-focus-expand/clear-filters behaviors
 render and update correctly before and after a checkbox toggle.
+
+### 2026-07-10 — PR #95 — Auth pages redesign, Phase 5 of enterprise UI/UX revamp (issue #6)
+
+`authShell.js` now wraps its existing card output (unchanged) in a new two-column
+`.auth-page` split: a left marketing panel and the card, side by side above the
+existing `≤1024px` breakpoint tier, collapsing to a single column (the marketing panel
+CSS-hidden) at/below it — reusing that tier rather than inventing a new breakpoint
+number, per `.claude/rules/ui-styling.md`'s six-tier scale convention. `authShell()`'s
+return shape (`{ node, cleanup, titleEl, subtitleEl }`) is unchanged, so neither
+`signIn.js` nor `signUp.js` needed any wiring change for the layout itself — the split
+is entirely a wrapping change inside `authShell.js` + `app.css`.
+
+New: `src/ui/components/authMarketingPanel.js` (the left panel — brand mark + 3 value
+props, dark brand-gradient background independent of the site's own light/dark theme).
+Deliberately **no testimonial**, despite the original issue #6 Phase 5 spec's mockup
+calling for one — a fabricated customer quote reads as deceptive on a product moving
+toward real paying users; confirmed with the user before implementing, not assumed.
+
+Two new, independently unit-tested `src/ui/utils/` modules, both used by `signIn.js`
+and `signUp.js`: `fieldValidation.js` (`isValidEmailFormat()`, pure; and
+`attachFieldValidationIcon()`, a small DOM helper returning `{ setState(valid) }` so
+callers can drive the same ✓/✕ icon from either a `blur` listener or existing custom
+logic — sign-up's confirm-password field drives it from the pre-existing real-time
+`checkConfirmMatch()` instead of adding a redundant second listener) and
+`buttonLoading.js` (`setButtonLoading()`, replacing three near-identical inline
+spinner/label-swap implementations across sign-in/sign-up/reset-password with one
+shared helper — promoted the spinner styling itself from the `.save-badge`-scoped
+`.spin` class to a new page-agnostic `.btn-spinner`, using `currentColor` for the
+spinner's accent instead of a hardcoded brand color so it reads correctly against both
+`.btn-primary`'s dark background and `.btn-secondary`'s light one).
+
+One pre-existing gap noted, not fixed here (out of this phase's scope, belongs to
+#21's accessibility audit): `.password-toggle`'s touch target measured ~19px tall on
+an emulated touch device during verification, well under the 44px WCAG 2.5.5 minimum
+issue #36 established for other controls — `.password-toggle` was never added to that
+list. Not introduced by this PR (its CSS is untouched), flagged for #21 to pick up.
+
+Verified live: `npm test` (487 passed, 12 new) and `npm run lint` (0 errors) green; a
+throwaway Playwright driver (not committed) screenshotted sign-in/sign-up at desktop,
+the `1024px` fallback boundary, and mobile, in both themes — confirmed the split layout,
+value props, and dark-panel readability render correctly, the blur-validation icons
+show the correct ✓/✕ only after first blur, the validation icon and password-toggle
+button coexist without overlapping (`has-toggle` offset), and the submit-button
+spinner appears and the button disables correctly under a throttled network before
+restoring on error. Full 11-width/2-theme `verify-changes` matrix run on both pages —
+zero horizontal overflow at any width.

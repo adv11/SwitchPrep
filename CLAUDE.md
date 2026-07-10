@@ -105,7 +105,7 @@ src/ui/pages/signIn.js        sign-in screen — see .claude/rules/auth-security
 src/ui/pages/signUp.js        sign-up screen — see .claude/rules/auth-security.md
 src/ui/pages/onboarding.js    starter template picker (route: /onboarding) — see .claude/rules/roadmap-store.md
 src/ui/pages/dashboard.js     the roadmap dashboard (the whole app, really) — see .claude/rules/roadmap-store.md and ui-styling.md
-src/ui/components/authShell.js   shared chrome for signIn/signUp (brand row + theme toggle + card)
+src/ui/components/authShell.js   shared chrome for signIn/signUp — split layout (issue #6 Phase 5) + authMarketingPanel.js left panel
 src/ui/components/brand.js       canonical brand mark/wordmark — createBrandMark()/createBrandIcon()
 src/ui/components/themeToggle.js reusable dark/light toggle button
 src/ui/components/sidebar.js, topbar.js, avatar.js, dropdown.js  app shell (issue #6 Phase 2) — see .claude/rules/ui-styling.md
@@ -117,7 +117,7 @@ src/ui/components/confirmDialog.js  styled confirm/cancel modal — see "Never u
 src/ui/components/buildYourOwnGuide.js, newRoadmapModal.js, importRoadmapModal.js  manual/AI-import roadmap creation — see .claude/rules/roadmap-store.md
 src/data/importPrompt.js, src/core/roadmap/importValidator.js, schemaAdapter.js, limits.js  AI-import prompt + pure validator/adapter/caps — see .claude/rules/roadmap-store.md
 src/core/dailyTodo/limits.js         MAX_TODO_TITLE_LENGTH/MAX_ACTIVE_TODOS/duration caps — see .claude/rules/roadmap-store.md
-src/ui/utils/dailyTodo.js, customRoadmapIcon.js  pure helpers, no DOM/Firebase dependency; src/utils/countUp.js  pure requestAnimationFrame count-up helper
+src/ui/utils/dailyTodo.js, customRoadmapIcon.js, fieldValidation.js, buttonLoading.js  pure/DOM helpers, no Firebase dependency; src/utils/countUp.js  pure requestAnimationFrame count-up helper
 src/styles/app.css            the entire design system (tokens, components, both themes) — see .claude/rules/ui-styling.md
 docs/architecture.md          living architecture guide + Build Log (canonical deep-dive doc)
 docs/adr/                     one-time architecture decision records
