@@ -150,6 +150,33 @@ describe('onboarding page — first-time picker (onboardingDone === false)', () 
     resolvePick();
   });
 
+  // Real, reported bug: picking a roadmap awaits a Firebase round-trip
+  // (store.switchRoadmap()) before navigating, and the only feedback used to
+  // be the clicked card's faint opacity dim (.picking) — indistinguishable
+  // from unresponsive lag on anything slower than an instant local network.
+  // buildPickingOverlay() (onboarding.js) covers the clicked card with a
+  // spinner + "Opening…" for the duration of the wait.
+  it('shows a spinner + "Opening…" overlay on the clicked card while a pick is in flight, then navigates away once it resolves', async () => {
+    let resolvePick;
+    const switchRoadmap = vi.fn(() => new Promise(resolve => { resolvePick = resolve; }));
+    const { app, navigate } = await setup({ switchRoadmap });
+    const pianoCard = [...app.querySelectorAll('.template-card')].find(c => c.textContent.includes('Learning Piano'));
+
+    pianoCard.querySelector('.template-card-pick').click();
+
+    const overlay = pianoCard.querySelector('.template-card-picking-overlay');
+    expect(overlay).not.toBeNull();
+    expect(overlay.textContent).toMatch(/opening/i);
+    expect(pianoCard.classList.contains('picking')).toBe(true);
+
+    // On success the page navigates away (no DOM left to clean up in the
+    // real app) rather than clearing `.picking` — the overlay is only ever
+    // explicitly removed on the failure path (see the "shows an error toast
+    // and re-enables cards" test above).
+    resolvePick();
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/app', true));
+  });
+
   it('every built-in template card has a hide (×) button — "blank" is retired, no more exceptions', async () => {
     const { app } = await setup();
     const { TEMPLATES } = await import('../../src/data/templates/index.js');

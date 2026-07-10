@@ -222,6 +222,18 @@ export function animatePhaseBody(phaseCardEl, opening) {
       phaseBodyEl.style.display = 'none';
       return;
     }
+    // `overflow: hidden` (below) makes `.phase-body` a scroll container for
+    // the CSS Overflow spec's purposes — and per the Position spec, that
+    // makes it the sticky positioning context for every `.section-label`
+    // inside it (normally the page/viewport is). For the animation's
+    // duration, each sticky label recalculates its "stuck" position against
+    // this tiny/growing container instead of the page, which is exactly the
+    // reported bug: labels briefly jump and overlap sibling content before
+    // snapping to their correct position once `overflow` is cleared below.
+    // `.phase-body-animating` (app.css) drops `.section-label` to `position:
+    // static` for exactly this window so there's nothing for the browser to
+    // reposition mid-animation.
+    phaseBodyEl.classList.add('phase-body-animating');
     phaseBodyEl.style.display = 'block';
     phaseBodyEl.style.overflow = 'hidden';
     phaseBodyEl.style.height = `${current}px`;
@@ -230,6 +242,7 @@ export function animatePhaseBody(phaseCardEl, opening) {
       phaseBodyEl.style.display = 'none';
       phaseBodyEl.style.height = '';
       phaseBodyEl.style.overflow = '';
+      phaseBodyEl.classList.remove('phase-body-animating');
     };
     return;
   }
@@ -239,6 +252,7 @@ export function animatePhaseBody(phaseCardEl, opening) {
     phaseBodyEl.style.display = 'block';
     return;
   }
+  phaseBodyEl.classList.add('phase-body-animating');
   phaseBodyEl.style.display = 'block';
   phaseBodyEl.style.overflow = 'hidden';
   phaseBodyEl.style.height = '0px';
@@ -247,6 +261,7 @@ export function animatePhaseBody(phaseCardEl, opening) {
   anim.onfinish = () => {
     phaseBodyEl.style.height = '';
     phaseBodyEl.style.overflow = '';
+    phaseBodyEl.classList.remove('phase-body-animating');
   };
 }
 

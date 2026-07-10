@@ -12,6 +12,23 @@ import { showToast } from '../components/toast.js';
 import { TEMPLATES } from '../../data/templates/index.js';
 import { pickCustomRoadmapIcon } from '../utils/customRoadmapIcon.js';
 
+// Picking a roadmap (built-in template or custom) awaits a real
+// `store.switchRoadmap()` — a Firebase round-trip for anything not already
+// cached this session — before navigating to `/app`. A real, reported bug:
+// the only feedback used to be `.template-card.picking`'s faint opacity dim,
+// which read as unresponsive lag rather than "loading" on anything slower
+// than an instant local network. This overlay (spinner + "Opening…", shown
+// via `.template-card.picking .template-card-picking-overlay` in app.css)
+// gives immediate, unambiguous feedback the instant the card is clicked, for
+// however long the round-trip actually takes. Shared by buildCard() and
+// buildCustomCard() — both set the same `.picking` class on click.
+function buildPickingOverlay() {
+  return el('div', { className: 'template-card-picking-overlay' }, [
+    el('span', { className: 'btn-spinner' }),
+    ' Opening…'
+  ]);
+}
+
 // Shown once, right after a brand-new sign-up (Issue #51). A user who has already
 // picked a template can also reach this page later via the dashboard's "Switch
 // template" link to start (or switch back to) a different one — since issue #58,
@@ -252,7 +269,8 @@ export function renderOnboarding(app, { user, store, dailyTodoStore }) {
         title: `Delete ${roadmap.title}`,
         text: '🗑',
         onClick: () => deleteCustomCard(roadmap, cardEl)
-      })
+      }),
+      buildPickingOverlay()
     ]);
 
     cardEls.push(cardEl);
@@ -297,7 +315,8 @@ export function renderOnboarding(app, { user, store, dailyTodoStore }) {
         title: `Hide ${template.name}`,
         text: '×',
         onClick: () => hideTemplate(template, cardEl)
-      })
+      }),
+      buildPickingOverlay()
     ]);
 
     cardEls.push(cardEl);

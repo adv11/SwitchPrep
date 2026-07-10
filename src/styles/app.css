@@ -643,6 +643,29 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .template-card:hover, .template-card:has(.template-card-pick:focus-visible) { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: var(--brand); }
 .template-card.is-disabled { cursor: not-allowed; opacity: 0.6; transform: none; pointer-events: none; }
 .template-card.picking { opacity: 0.85; }
+/* `store.switchRoadmap()` (onClick, buildCard()/buildCustomCard(),
+   onboarding.js) is a real Firebase round-trip whenever the template isn't
+   already cached this session — the faint opacity dim above was the only
+   feedback during that wait, which read as unresponsive lag rather than
+   "loading" on anything slower than an instant local network (real,
+   reported bug). This overlay (buildPickingOverlay(), onboarding.js) covers
+   the whole card with a spinner + "Opening…" for the duration of the click. */
+.template-card-picking-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--surface-glass);
+  backdrop-filter: blur(2px);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--brand-dark);
+}
+.template-card.picking .template-card-picking-overlay { display: flex; }
+.template-card-picking-overlay .btn-spinner { width: 16px; height: 16px; border-width: 2px; }
 /* issue #6 Phase 9 — the "pick this template" action is now a real <button>
    nested inside the (non-interactive) `.template-card` div, sibling to the
    corner hide/delete/info button, instead of `.template-card` itself
@@ -1720,6 +1743,17 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   padding: 12px 16px 6px;
   background: var(--panel-2);
 }
+/* `.phase-body-animating` (animatePhaseBody(), dashboard.js) is applied only
+   while `.phase-body` carries an inline `overflow: hidden` for its FLIP
+   height animation. That `overflow: hidden` makes `.phase-body` a scroll
+   container, which per the Position spec becomes the sticky positioning
+   context for every `.section-label` inside it (normally the page is) —
+   causing labels to jump/overlap against the still-animating 0→target
+   height for the animation's duration, a real reported bug. Dropping to
+   `position: static` for that window removes the sticky recalculation
+   entirely; the class is removed (and sticky restored) the instant the
+   animation's `onfinish` clears the inline `overflow`. */
+.phase-body-animating .section-label { position: static; }
 
 /* Custom roadmap phase/section CRUD (issue #4) */
 .phase-manage-row, .section-manage-row {
