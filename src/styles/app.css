@@ -1080,16 +1080,26 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 
 .stat-tile-ring { justify-content: flex-start; }
 .stat-tile-ring-wrap { position: relative; display: grid; place-items: center; flex-shrink: 0; }
+/* issue #6 Phase 4.1 fix — was `display: grid` with no columns, which
+   auto-places each child (the number, the "%" span) into its own implicit
+   row instead of sitting inline, stacking "0" above "%" instead of reading
+   "0%". flex + baseline keeps them on one line regardless of font-size
+   mismatch between the two children. */
 .stat-tile-ring-value {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  font-size: var(--text-sm);
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: var(--brand-dark);
 }
+/* percentStat (dashboard.js) reuses the shared .stat-tile-number class (32px,
+   sized for the big "Items done" tile) — scope it down inside the 64px ring
+   so it doesn't overflow/wrap. */
+.stat-tile-ring-value .stat-tile-number { font-size: var(--text-lg); }
+.stat-tile-ring-value span:not(.stat-tile-number) { font-size: var(--text-xs); margin-left: 1px; }
 
 .toolbar {
   max-width: 1160px;
