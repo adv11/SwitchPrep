@@ -7,6 +7,7 @@ import { openNewRoadmapModal } from '../components/newRoadmapModal.js';
 import { openImportRoadmapModal } from '../components/importRoadmapModal.js';
 import { createDailyTodoPanel } from '../components/dailyTodoPanel.js';
 import { confirmDialog } from '../components/confirmDialog.js';
+import { confirmAndSignOut } from '../utils/signOut.js';
 import { showToast } from '../components/toast.js';
 import { TEMPLATES } from '../../data/templates/index.js';
 import { pickCustomRoadmapIcon } from '../utils/customRoadmapIcon.js';
@@ -385,6 +386,19 @@ export function renderOnboarding(app, { user, store, dailyTodoStore }) {
   renderHiddenToggle();
 
   const themeToggleBtn = createThemeToggle();
+  // This page had no sign-out affordance anywhere — a real, reported gap
+  // (the app-shell sidebar with its own sign-out button only renders on
+  // dashboard.js, and this "all roadmaps" picker doesn't use that shell).
+  // Reuses the same confirmAndSignOut() the sidebar calls, so behavior
+  // (always confirms first, message tailored to guest/dirty state) matches
+  // exactly regardless of where a user signs out from.
+  const signOutBtn = el('button', {
+    type: 'button',
+    className: 'btn btn-ghost btn-icon',
+    'aria-label': 'Sign out',
+    text: '⏻',
+    onClick: () => confirmAndSignOut(user, store)
+  });
   // Rendered on this page (not the roadmap dashboard) precisely because it's
   // independent of any single roadmap — this is the "all roadmaps" screen,
   // so Daily Todos lives here instead of looking like it belongs to whichever
@@ -407,7 +421,7 @@ export function renderOnboarding(app, { user, store, dailyTodoStore }) {
     el('div', { className: 'onboarding-inner' }, [
       el('div', { className: 'auth-top-row' }, [
         el('a', { className: 'brand', href: '#/onboarding', 'aria-label': 'Ascent — all roadmaps' }, createBrandMark()),
-        themeToggleBtn
+        el('div', { className: 'onboarding-top-actions' }, [themeToggleBtn, signOutBtn])
       ]),
       backBtn,
       el('header', { className: 'onboarding-head' }, [

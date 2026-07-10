@@ -118,7 +118,7 @@ src/ui/components/confirmDialog.js  styled confirm/cancel modal — see "Never u
 src/ui/components/buildYourOwnGuide.js, newRoadmapModal.js, importRoadmapModal.js  manual/AI-import roadmap creation — see .claude/rules/roadmap-store.md
 src/data/importPrompt.js, src/core/roadmap/importValidator.js, schemaAdapter.js, limits.js  AI-import prompt + pure validator/adapter/caps — see .claude/rules/roadmap-store.md
 src/core/dailyTodo/limits.js         MAX_TODO_TITLE_LENGTH/MAX_ACTIVE_TODOS/duration caps — see .claude/rules/roadmap-store.md
-src/ui/utils/dailyTodo.js, customRoadmapIcon.js, fieldValidation.js, buttonLoading.js  pure/DOM helpers, no Firebase dependency; src/utils/countUp.js  pure requestAnimationFrame count-up helper
+src/ui/utils/dailyTodo.js, customRoadmapIcon.js, fieldValidation.js, buttonLoading.js  pure/DOM helpers, no Firebase dependency; signOut.js  confirmAndSignOut(), the one shared sign-out entry point — see .claude/rules/auth-security.md; src/utils/countUp.js  pure requestAnimationFrame count-up helper
 src/styles/app.css            the entire design system (tokens, components, both themes) — see .claude/rules/ui-styling.md
 docs/architecture.md          living architecture guide + Build Log (canonical deep-dive doc)
 docs/adr/                     one-time architecture decision records

@@ -3,6 +3,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../src/ui/router.js', () => ({ navigate: vi.fn() }));
 vi.mock('../../src/ui/components/newRoadmapModal.js', () => ({ openNewRoadmapModal: vi.fn() }));
 vi.mock('../../src/ui/components/importRoadmapModal.js', () => ({ openImportRoadmapModal: vi.fn() }));
+// onboarding.js now imports confirmAndSignOut (src/ui/utils/signOut.js) for
+// its new sign-out button, which transitively imports the real firebase.js —
+// mock it the same way dashboard.test.js/signIn.test.js already do.
+vi.mock('../../src/services/firebase.js', () => ({
+  authApi: { signOut: vi.fn().mockResolvedValue(undefined) }
+}));
 
 async function setup({
   onboardingDone = false,
@@ -58,6 +64,25 @@ describe('onboarding page — gating', () => {
     renderOnboarding(app, { user: null, store: { getSnapshot: () => ({ onboardingDone: false, hiddenTemplateIds: [], startedTemplateIds: [] }) } });
     expect(navigate).toHaveBeenCalledWith('/signin', true);
     expect(app.children.length).toBe(0);
+  });
+});
+
+describe('onboarding page — sign-out button', () => {
+  it('renders a sign-out button, absent before this fix', async () => {
+    const { app } = await setup();
+    const signOutBtn = app.querySelector('[aria-label="Sign out"]');
+    expect(signOutBtn).not.toBeNull();
+  });
+
+  it('clicking sign-out asks for confirmation before actually signing out', async () => {
+    const { app } = await setup();
+    const { authApi } = await import('../../src/services/firebase.js');
+    app.querySelector('[aria-label="Sign out"]').click();
+    expect(getConfirmDialog()).not.toBeNull();
+    expect(authApi.signOut).not.toHaveBeenCalled();
+
+    clickDialogAction('confirm');
+    await vi.waitFor(() => expect(authApi.signOut).toHaveBeenCalled());
   });
 });
 

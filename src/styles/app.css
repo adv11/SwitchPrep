@@ -514,6 +514,10 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   gap: 12px;
 }
 
+/* Sign-out button added to the onboarding page's top row alongside the theme
+   toggle — this page had no sign-out affordance anywhere before. */
+.onboarding-top-actions { display: flex; align-items: center; gap: 8px; }
+
 .auth-brand { justify-self: start; }
 
 .auth-card-lg {
