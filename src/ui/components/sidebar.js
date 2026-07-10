@@ -1,10 +1,8 @@
 import { el } from '../dom.js';
-import { navigate } from '../router.js';
 import { createBrandMark } from './brand.js';
 import { createAvatar } from './avatar.js';
 import { createDropdown } from './dropdown.js';
-import { authApi } from '../../services/firebase.js';
-import { confirmDialog } from './confirmDialog.js';
+import { confirmAndSignOut } from '../utils/signOut.js';
 import { KEYS } from '../../services/localStorageKeys.js';
 
 // Issue #6 Phase 2.1. Nav list is deliberately just Dashboard + My Roadmaps —
@@ -20,19 +18,6 @@ const NAV_ITEMS = [
 
 function readCollapsed() {
   return localStorage.getItem(KEYS.SIDEBAR_COLLAPSED) === '1';
-}
-
-async function handleSignOut(user, store) {
-  if (user.isAnonymous && store.getSnapshot().dirty) {
-    if (!await confirmDialog({
-      title: 'Sign out anyway?',
-      message: 'You have unsaved changes. Guest session data is only stored on this device and will be cleared on sign-out.',
-      confirmText: 'Sign out',
-      danger: true
-    })) return;
-  }
-  await authApi.signOut();
-  navigate('/signin', true);
 }
 
 // Returns the sidebar node with a `_toggleMobile()` method the topbar's
@@ -80,7 +65,7 @@ export function createSidebar({ activeRoute, user, store, onDeleteAccount }) {
       className: 'btn btn-ghost btn-icon app-sidebar-signout',
       'aria-label': 'Sign out',
       text: '⏻',
-      onClick: () => handleSignOut(user, store)
+      onClick: () => confirmAndSignOut(user, store)
     })
   ]);
 

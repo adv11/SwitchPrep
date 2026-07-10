@@ -2197,3 +2197,50 @@ resolves straight to the final `display`/class state with zero animation frames,
 confirmed the fix for the "measure after the class already changed" bug above by
 watching the collapse actually animate instead of vanishing on click.
 `npm test` (503 passed, 4 new) and `npm run lint` (0 errors) green.
+
+### 2026-07-10 — PR TBD — Animation race-condition fix + always-confirm sign-out (reported live)
+
+Two live bug reports fixed together, one new file (`src/ui/utils/signOut.js`).
+
+**A phase's topic list stayed visually cut off for a couple of seconds after
+expanding it.** Root cause: `animatePhaseBody()` (Phase 7's FLIP animation, PR #97)
+never canceled a still-running animation on the same `.phase-body` before starting a
+new one. Clicking a phase-head twice in quick succession — exactly what a frustrated
+user does when an interaction feels slow — started a second animation while the
+first's `onfinish` closure was still pending; that stale handler then fired *after*
+the second call had already settled its own display/height/overflow state, silently
+overwriting it back to the wrong thing. Fixed with
+`phaseBodyEl.getAnimations().forEach(a => a.cancel())` at the top of
+`animatePhaseBody()` — `cancel()` (unlike letting an animation finish naturally) never
+invokes `onfinish`, so the stale handler can no longer fire at all. Testing this
+required upgrading `tests/setup.js`'s jsdom `Element.animate`/`getAnimations` stubs
+from two independently-faked functions to a linked pair (a `WeakMap`-backed per-element
+registry) — the previous stub's `getAnimations()` always returned `[]`, which couldn't
+verify cancellation ever actually happened.
+
+**Same fix's sibling, a performance safeguard rather than a correctness bug:**
+animating `height` is never compositor-only — it forces a full layout + paint every
+frame, which gets genuinely expensive for a phase with a lot of topics. Measured
+several built-in template phases well past what a smooth 240ms animation can afford on
+a slower device (Core Java: 60 items, Spring and Spring Boot: 63, GenAI and Agentic AI:
+44, System Design: 40). A new `LARGE_PHASE_ITEM_THRESHOLD` (40) skips the animation
+entirely past that many items, jumping straight to the end state the same way the
+existing `prefers-reduced-motion` path already does.
+
+**Sign-out now always confirms, everywhere, and `/#/onboarding` finally has a sign-out
+button.** `sidebar.js`'s sign-out handler used to confirm only for an anonymous guest
+with unsaved (`dirty`) changes — a real account, or a guest with nothing unsaved,
+signed out instantly with no confirmation at all. New `confirmAndSignOut(user, store)`
+(`src/ui/utils/signOut.js`) is the one shared implementation both `sidebar.js`'s footer
+button and a new button on `onboarding.js`'s top row now call — the onboarding page
+(the "all roadmaps" picker) had no sign-out affordance anywhere before this, since the
+app-shell sidebar with its own sign-out button only renders on `dashboard.js`. See
+`.claude/rules/auth-security.md` for the convention this establishes for any future
+sign-out entry point.
+
+Verified live: a Playwright driver rapidly triple-clicked a phase-head (open → close →
+open, no waits between clicks — deliberately stressing the exact race) and confirmed
+the card settles fully open with its first item never clipped; separately confirmed the
+onboarding sign-out button shows a confirmation dialog and the sidebar's now does too
+even for a guest with no unsaved changes (previously it wouldn't have). `npm test` (512
+passed, 9 new) and `npm run lint` (0 errors) green.

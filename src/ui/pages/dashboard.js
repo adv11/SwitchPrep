@@ -130,6 +130,14 @@ function cssToken(name, fallback) {
   return raw || fallback;
 }
 
+// See the comment at animatePhaseBody()'s skipForSize check below for why
+// this exists — chosen as comfortably above what a typical phase/section has
+// (single digits to low tens of items) but well below what the largest
+// built-in template phases run (some exceed 50-100), so almost every
+// expand/collapse keeps the animation and only the handful of genuinely huge
+// phases skip it.
+const LARGE_PHASE_ITEM_THRESHOLD = 40;
+
 // Issue #6 Phase 7 — FLIP height animation for phase-card expand/collapse,
 // replacing the previous plain `display: none/block` + CSS fade (native
 // `display` toggles can't be transitioned at all). Element.animate() runs on
@@ -154,7 +162,34 @@ export function animatePhaseBody(phaseCardEl, opening) {
     phaseCardEl.classList.toggle('open', opening);
     return;
   }
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // A real, reported bug: a phase-head clicked twice in quick succession
+  // (a frustrated re-click on what feels like a slow/laggy toggle is exactly
+  // the kind of double-click this hits) started a second animation without
+  // canceling the first — the first animation's `onfinish` closure was still
+  // pending and fired later, stomping the *second* animation's intended
+  // display/height/overflow state after the fact. That's what made a topic
+  // list look "cut off" for a couple of seconds before "fixing itself": the
+  // first animation's stale finish handler eventually overwrote whatever the
+  // second one had already settled into. `getAnimations()` + `cancel()`
+  // (cancel, not finish — cancel never fires `onfinish`) stops any animation
+  // already running on this element before a new one starts, so at most one
+  // animation (and one pending finish handler) is ever in flight per element.
+  phaseBodyEl.getAnimations().forEach(anim => anim.cancel());
+
+  // Animating `height` is never compositor-only — every frame forces a full
+  // layout + paint of this subtree (and everything below it on the page),
+  // unlike a `transform`/`opacity` animation. For a phase with a lot of
+  // topics (some built-in templates' phases run 50-100+ items, each with its
+  // own border/box-shadow/backdrop-filter-adjacent styling), that per-frame
+  // cost can genuinely make a nominal 240ms animation take several real
+  // seconds to visually settle on a slower device — reported live as a topic
+  // list looking "cut off" for a couple of seconds. Past this many items, skip
+  // the animation and jump straight to the end state, same as the
+  // reduced-motion path — the animation is a nice-to-have, not worth risking
+  // a multi-second stutter over.
+  const skipForSize = phaseBodyEl.querySelectorAll('.check-item').length > LARGE_PHASE_ITEM_THRESHOLD;
+  const reduceMotion = skipForSize || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const duration = parseFloat(cssToken('--duration-base', '240ms')) || 240;
   const easing = cssToken('--ease-spring', 'cubic-bezier(0.2, 0.9, 0.3, 1)');
 
