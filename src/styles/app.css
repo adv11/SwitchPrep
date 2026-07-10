@@ -962,7 +962,7 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .app-sidebar.collapsed .app-sidebar-identity { justify-content: center; padding: var(--space-1) 0; }
 .app-sidebar.collapsed .app-sidebar-signout { width: 32px; height: 32px; font-size: var(--text-md); }
 
-/* A near-opaque, theme-agnostic overlay — not the lighter
+/* A near-black, higher-opacity, theme-agnostic overlay — not the lighter
    `rgba(15, 23, 42, 0.5)` `.modal-overlay` uses. That value reads fine over
    `.modal-overlay`'s content because a bright, opaque `.modal-card` sits
    centered on top of it, drawing the eye; the mobile sidebar drawer has no
@@ -971,21 +971,18 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
    already close to this same navy, the old value barely dimmed anything and
    the dashboard behind it stayed fully readable, reading as a broken
    half-transparent mess rather than a real modal overlay (reported live,
-   issue #18 follow-up). A first pass at `0.78` opacity + a `2px` blur was
-   still not enough — dashboard text (`P2`/`P3`, "Expand all", stat numbers)
-   stayed legible right through it, which read as "still broken," not just
-   "a bit dim" (reported live again, second screenshot). This needs to look
-   solid, not like frosted glass: opacity all the way up to `0.94` and a much
-   stronger `10px` blur, so the drawer reads as the only interactive surface
-   left on screen. Do not lower either value back down without re-verifying
-   against a live screenshot in dark theme — the whole point is that no
-   dashboard text should be readable behind it anymore. */
+   issue #18 follow-up). `0.78` opacity + `blur(2px)` fixed that — confirmed
+   live in both themes. (A later pass briefly pushed this to `0.94`/`blur(10px)`
+   to make dashboard text fully unreadable behind the drawer, but that read as
+   too heavy/flat — reverted back to this value, which was already good; the
+   real remaining problem turned out to be the layout-shift bug fixed below,
+   not this backdrop.) */
 .app-sidebar-backdrop {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(2, 6, 16, 0.94);
-  backdrop-filter: blur(10px);
+  background: rgba(2, 6, 16, 0.78);
+  backdrop-filter: blur(2px);
   z-index: 199;
 }
 .app-sidebar-backdrop.show { display: block; }
@@ -1092,12 +1089,28 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   padding: var(--space-1) var(--space-2);
 }
 
-.app-shell-main { display: flex; flex-direction: column; min-width: 0; }
+/* `grid-column: 2` is required, not decorative — without an explicit
+   placement, CSS Grid's auto-placement algorithm places the next in-flow
+   child into the first *available* cell. `.app-sidebar` going
+   `position: fixed` when the mobile/tablet drawer opens (below) removes it
+   from grid flow entirely, and without this rule `.app-shell-main` (the
+   next in-flow child) would auto-place into column 1 instead of column 2 —
+   shrinking to the sidebar's own column width and jumping to the left edge
+   the instant the drawer opened, a real layout-shift bug distinct from (and
+   found after fixing) the backdrop-visibility issue above (reported live,
+   issue #18 follow-up). This selector has no visible effect while the
+   sidebar stays in flow (desktop, or the closed tablet rail) — it only
+   matters once something upstream can go out of flow. */
+.app-shell-main { display: flex; flex-direction: column; min-width: 0; grid-column: 2; }
 .app-content { flex: 1; }
 
 /* Tablet (640–1023px, issue #6 Phase 2.1) — automatic icon-only rail,
    independent of the manual desktop collapse toggle above. */
 @media (max-width: 1023px) {
+  /* Locks the grid's first column to the closed rail's own width (56px),
+     independent of `.app-sidebar`'s own `width` — see the fix below for why
+     that decoupling matters. */
+  .app-shell-2 { grid-template-columns: 56px 1fr; }
   .app-sidebar { width: 56px; padding: var(--space-3) var(--space-2); }
   .app-sidebar .nav-item-label,
   .app-sidebar .app-sidebar-user-email,
@@ -1121,6 +1134,15 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
      hamburger becomes visible here too, and opening it expands the rail into
      the same full overlay drawer instead of staying icon-only. */
   .app-topbar-hamburger { display: inline-flex; }
+  /* `position: fixed` takes the sidebar out of grid flow the moment the
+     drawer opens — without the `.app-shell-2` override above locking the
+     grid's first column to a fixed 56px, the `auto`-sized column it used to
+     occupy collapses (nothing in-flow left to size it against), and
+     `.app-shell-main` reflows to fill the freed space: the whole dashboard
+     visibly shifted/resized every time the drawer opened and closed, not
+     just an overlay appearing on top of a static page (reported live,
+     issue #18 follow-up). Locking the column width is the fix — never make
+     it `auto` again at this breakpoint while `.mobile-open` can go fixed. */
   .app-sidebar.mobile-open {
     position: fixed;
     top: 0;
