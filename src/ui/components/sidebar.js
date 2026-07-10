@@ -4,6 +4,7 @@ import { createAvatar } from './avatar.js';
 import { createDropdown } from './dropdown.js';
 import { confirmAndSignOut } from '../utils/signOut.js';
 import { KEYS } from '../../services/localStorageKeys.js';
+import { exportBackupJson, exportBackupCsv, importBackupFromFile } from '../utils/backupActions.js';
 
 // Issue #6 Phase 2.1. Nav list is deliberately just Dashboard + My Roadmaps —
 // the original spec also listed Resources/Settings, but neither page exists
@@ -18,6 +19,37 @@ const NAV_ITEMS = [
 
 function readCollapsed() {
   return localStorage.getItem(KEYS.SIDEBAR_COLLAPSED) === '1';
+}
+
+// Extracted out of createSidebar() (issue #18) — builds the account
+// dropdown's item list and the hidden file input "Import backup…" clicks to
+// open a picker. Backup export/import is available to every signed-in
+// identity, including an anonymous guest session — local-only progress is
+// exactly the data most at risk of being lost, so it isn't gated behind
+// `!user.isAnonymous` the way "Delete account" is.
+function buildAccountMenu({ user, store, identityTrigger, onDeleteAccount }) {
+  const importInput = el('input', {
+    type: 'file',
+    accept: '.json,application/json',
+    hidden: true,
+    onChange: () => {
+      const file = importInput.files?.[0];
+      importInput.value = '';
+      if (file) importBackupFromFile(store, file);
+    }
+  });
+
+  const dropdownItems = [
+    { text: 'Download backup (JSON)', onClick: () => exportBackupJson(store) },
+    { text: 'Export CSV', onClick: () => exportBackupCsv(store) },
+    { text: 'Import backup…', onClick: () => importInput.click() }
+  ];
+  if (!user.isAnonymous && onDeleteAccount) {
+    dropdownItems.push({ text: 'Delete account', danger: true, onClick: onDeleteAccount });
+  }
+
+  const identity = createDropdown(identityTrigger, dropdownItems, { align: 'start' });
+  return { identity, importInput };
 }
 
 // Returns the sidebar node with a `_toggleMobile()` method the topbar's
@@ -52,14 +84,12 @@ export function createSidebar({ activeRoute, user, store, onDeleteAccount }) {
     createAvatar(user, 'sm'),
     el('span', { className: 'app-sidebar-user-email', text: userLabel })
   ]);
-  const identity = (!user.isAnonymous && onDeleteAccount)
-    ? createDropdown(identityTrigger, [
-      { text: 'Delete account', danger: true, onClick: onDeleteAccount }
-    ], { align: 'start' })
-    : identityTrigger;
+
+  const { identity, importInput } = buildAccountMenu({ user, store, identityTrigger, onDeleteAccount });
 
   const footer = el('div', { className: 'app-sidebar-footer' }, [
     identity,
+    importInput,
     el('button', {
       type: 'button',
       className: 'btn btn-ghost btn-icon app-sidebar-signout',
