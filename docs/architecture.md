@@ -2489,3 +2489,63 @@ banner both downloads the file and dismisses it; the reworded restore modal read
 correctly with a real 485-topic backup file. Screenshots committed to
 `docs/screenshots/issue-18-export-import/`. `npm test` (608 passed) and `npm run lint`
 (0 errors, same 24 pre-existing warnings) green.
+
+### 2026-07-11 — PR TBD — Account settings page (issue #16)
+
+New `src/ui/pages/settings.js` at `#/settings`, reusing the same `app-shell-2`
+sidebar+topbar chrome `dashboard.js` established in Phase 2 rather than inventing a
+second page shell. Reachable from `sidebar.js`'s nav (a new "Settings" `NAV_ITEMS` entry
+— the original Phase 2 comment explaining why Settings was left out is now updated,
+since it's real) and from the account dropdown's own menu (a new "Settings" item ahead
+of the existing backup/export ones).
+
+Signed-in users get four sections: Profile (email, an inline-expanding "Change email"
+form, an inline-expanding "Change password" form, an email-verified badge), Preferences
+(theme select, and a "default filter" select), Data (the existing `exportBackupJson()`
+action from issue #18), and a Danger zone (delete account). A guest instead sees a single
+simplified "Create a free account" card — no profile or danger-zone sections, since a
+guest has neither an email/password credential nor an account to delete this way.
+
+**`authApi.updateEmail(newEmail, currentPassword)` / `authApi.updatePassword(newPassword,
+currentPassword)`** (`src/services/firebase.js`) reuse `deleteAccount()`'s existing
+reauthenticate-first pattern (`EmailAuthProvider.credential` +
+`reauthenticateWithCredential`) — Firebase requires a freshly reauthenticated session for
+any of these three "sensitive" operations and throws `auth/requires-recent-login`
+otherwise. `updateEmail` calls `verifyBeforeUpdateEmail`, not the deprecated direct
+`updateEmail` — the new address only actually takes effect once its verification link is
+clicked, matching the issue's spec ("Your email won't change until verified") and
+required by newer Firebase projects, which reject a bare `updateEmail()` call outright.
+Both are guarded at the API layer by a new `assertHasPasswordCredential(user)`
+(`src/services/accountGuards.js`) — the same defense-in-depth precedent as
+`assertAccountDeletable`, since an anonymous guest has no password credential to
+reauthenticate with and the API layer shouldn't rely solely on settings.js never
+rendering the profile section for one.
+
+**`showDeleteModal()` moved out of `dashboard.js` into `src/ui/components/
+deleteAccountModal.js`** (`openDeleteAccountModal()`) — the sidebar's account dropdown
+and the new settings page's danger zone both need to open the identical "type your
+password to confirm" flow, so it's a shared component now instead of a page-local
+export the settings page would otherwise have had to import cross-page. Its tests moved
+from `dashboard.test.js` to a new `deleteAccountModal.test.js` alongside it.
+
+**Default filter preference** (`KEYS.DEFAULT_FILTER`, `localStorageKeys.js`) is read by
+a new tiny `src/ui/utils/defaultFilterPreference.js` (`readDefaultFilterPreference()`),
+pulled into its own module rather than left inline in `settings.js` specifically so
+`dashboard.js`'s `renderDashboard` can read it without a page-to-page import (same
+reasoning `deleteAccountModal.js` was extracted for). `renderDashboard`'s
+`activeFilter` init became `ui.filter || readDefaultFilterPreference()` — the roadmap's
+own sticky per-session `ui.filter` (`KEYS.UI_STATE`) still wins once it's ever been set;
+the settings preference only actually applies the first time a roadmap is opened, before
+that.
+
+New tests: `tests/unit/settings.test.js` (guest vs. signed-in view, expand/submit both
+inline forms, mismatched-confirm-password guard, default-filter and theme selects),
+`tests/unit/deleteAccountModal.test.js` (moved from `dashboard.test.js`),
+`tests/unit/defaultFilterPreference.test.js`, plus new `assertHasPasswordCredential`
+cases in `accountGuards.test.js` and an updated `sidebar.test.js` for the new nav item
+and dropdown entry. Verified live against the Firebase Auth/Database emulator via a
+throwaway Playwright driver (not committed): guest view shows only the CTA card; a
+signed-in account's Profile/Preferences/Data/Danger-zone sections all render; expanding
+and submitting both the change-email and change-password forms actually call
+`authApi.updateEmail`/`authApi.updatePassword` and show the expected toast. `npm test`
+(622 passed) and `npm run lint` (0 errors, same 24 pre-existing warnings) green.
