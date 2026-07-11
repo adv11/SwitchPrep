@@ -2835,3 +2835,50 @@ existing unit tests all needed a new CDN-URL mock added alongside their existing
 `feedbackStore.js`, which imports the Firebase Realtime Database SDK directly (not just
 through `firebase.js`) — the default ESM loader can't resolve a bare `https://` import
 in Node, so every test file touching that import chain needs the stub.
+
+### 2026-07-12 — PR TBD — Theming correctness audit + enforcement (issue #116)
+
+A live screenshot report of `.feedback-type-card`/`.my-report-summary` rendering
+near-black text on a dark navy background (issue #9/#115) prompted an audit of whether
+the app had any mechanism that would have caught it before a human did. It didn't:
+`tests/e2e/accessibility.test.js` disabled axe-core's `color-contrast` rule app-wide
+(the only automated check that catches exactly this class of bug), there was zero
+automated dark-theme coverage, and no CSS/design-token linting existed at all.
+
+The audit itself (every literal hex/`rgb()` color in `app.css` outside the two `:root`
+token blocks, every custom `<button>`-like class not in the `.btn` family, and
+`chartWrapper.js`'s theme-awareness) found the two live bugs above already fixed by a
+hotfix, one new instance (`.notes-indicator`, same root cause — a bare `<button>` whose
+only content is a `currentColor` SVG icon with no explicit `color`), and confirmed
+`chartWrapper.js` hardcoded its brand line color and left Chart.js's default (light-tuned)
+axis/gridline colors untouched. Every other literal color outside the `:root` blocks
+turned out to be the legitimate "fixed color on a fixed background" pattern, now
+annotated with a `/* intentional: ... */` comment explaining why.
+
+Re-enabling `color-contrast` in CI (below) then caught a real bug the static audit
+missed: `.badge.P0`–`.badge.P3` and `.filter-chip[data-p="…"].active` set fixed white
+text on `--p0`–`--p3`, correct in light theme (dark/saturated token values) but wrong in
+dark theme, where those same tokens are light pastels tuned for border/dot visibility,
+not for hosting white text (`.badge.P1` measured 1.66:1 in the CI run). Fixed with a
+`:root[data-theme='dark']` override switching both to `var(--soft)` text (>6:1 against
+all four dark-theme priority tokens) — a reminder that a rule reading a token isn't
+automatically theme-safe if that token's dark-mode value was tuned for a different
+purpose than the rule assumes.
+
+Two enforcement mechanisms, so the next gap doesn't ship silently again:
+- `accessibility.test.js`'s blanket `disableRules(['color-contrast'])` is gone.
+  `color-contrast` now runs enabled on every page; the two confirmed sampler false
+  positives (`.phase-name`, `.badge.P0`) are excluded from the whole axe scan on the
+  dashboard test only, via `AxeBuilder#exclude()`, not a rule-wide disable. A second
+  `describe` block runs the same suite with `ascent-theme` forced to `'dark'` before
+  navigation — the light-mode-only pass would never have caught the original bug.
+- New `scripts/lint-theme.mjs`, wired into the `lint` CI job alongside `npm run lint`
+  (no `stylelint`/build-step dependency, per this repo's no-bundler constraint): fails on
+  an `app.css` color literal outside `:root` with no adjacent `/* intentional: ... */`
+  comment, or a custom `el('button', { className: '...' })` outside the `.btn` family
+  with no explicit `color` rule in `app.css`. `tests/unit/lintTheme.test.js` covers the
+  script's own logic with fixture CSS/JS strings (with and without violations) so the
+  check itself doesn't silently stop working.
+
+New convention documented in `.claude/rules/ui-styling.md` ("Every custom interactive
+element must explicitly set `color`") with the re-scoped axe exception list alongside it.
