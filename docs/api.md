@@ -373,3 +373,93 @@ overridden; optional ones have safe defaults.
 | Export | Signature | Notes |
 |---|---|---|
 | `getStorageAdapter` | `(user?: { providerData?: { providerId: string }[] } \| null) => StorageAdapter` | Always returns `firebaseAdapter` today — the `user` argument is accepted but unused, kept as the seam a future second backend would branch on. `roadmapStore.js`'s `setUser(nextUser)` calls this on every sign-in (not just once at store creation), so a future branch would apply across sign-out/sign-in-as-a-different-user within the same store instance without any call-site change. |
+
+## `src/data/changelog.json` — What's New changelog data (issue #20)
+
+A static, machine-readable file — imported directly as an ES module (`with { type: 'json' }`,
+requires `connect-src 'self'` in `index.html`'s CSP since a JSON module import is fetched
+same-origin), never read over the network at runtime. Schema, an array of version entries,
+newest entries do **not** need to be appended last — `APP_VERSION`/sort calls always take the
+max/newest explicitly:
+
+```
+[{
+  "version": number,       // integer, unique, no gaps required
+  "date": "YYYY-MM-DD",
+  "items": [{
+    "type": "feat" | "fix" | "improvement",
+    "title": string,
+    "description": string
+  }]
+}]
+```
+
+## `src/data/changelog.js` — changelog data + unread helpers (issue #20)
+
+| Export | Signature | Notes |
+|---|---|---|
+| `APP_VERSION` | `number` | `Math.max()` over every `changelog.json` entry's `version` — parallel to `ROADMAP_VERSION` (`src/data/templates/java-backend.js`). Bump by appending a new, higher-`version` entry to `changelog.json`; never edit an already-shipped entry's `version` in place. |
+| `CHANGELOG` | `ChangelogEntry[]` | The raw parsed `changelog.json` array, re-exported. |
+| `getUnseenChangelogEntries` | `(lastSeen: number \| null) => ChangelogEntry[]` | Entries newer than `lastSeen`, newest first. `null` (never seen) returns every entry. |
+| `hasUnseenChangelog` | `(lastSeen: number \| null) => boolean` | Drives the bell's unread dot. |
+
+## `src/core/changelog/version.js` — pure version-compare/schema logic (issue #20)
+
+No DOM, no store, no Firebase — same "pure core" precedent as `importValidator.js`/`backupValidator.js`.
+
+| Export | Signature | Notes |
+|---|---|---|
+| `isNewerVersion` | `(version: number, lastSeen: number \| null) => boolean` | `null`/`undefined` lastSeen is treated as older than every real version. |
+| `getUnseenEntries` | `(changelog: ChangelogEntry[], lastSeen: number \| null) => ChangelogEntry[]` | What `getUnseenChangelogEntries` above delegates to, generalized to take any changelog array (used directly by tests against fixture data). |
+| `hasUnseenEntries` | `(changelog: ChangelogEntry[], lastSeen: number \| null) => boolean` | Same generalization for `hasUnseenChangelog`. |
+| `validateChangelog` | `(changelog: unknown) => string[]` | Empty array means valid. Checks every entry has `version`/`date`/a non-empty `items` array, and every item's `type` is one of `feat`\|`fix`\|`improvement` with a non-empty `title`/`description`. Same "array of error strings" convention as `importValidator.js`. |
+
+## `src/services/changelogSeen.js` — last-seen-version persistence (issue #20)
+
+| Export | Signature | Notes |
+|---|---|---|
+| `getLastSeenChangelogVersion` | `() => number \| null` | Reads `KEYS.LAST_SEEN_CHANGELOG_VERSION`; `null` for a missing or non-numeric stored value. |
+| `setLastSeenChangelogVersion` | `(version: number) => void` | Called once, from `createChangelogBell()`'s click handler, the moment the drawer opens ("mark all as read on open" per the issue). |
+
+## `src/ui/components/notificationBell.js` / `changelogDrawer.js` — bell + drawer UI (issue #20)
+
+| Export | Signature | Notes |
+|---|---|---|
+| `createNotificationBell` | `({ hasUnread: boolean, onClick: () => void }) => HTMLButtonElement` | Low-level bell button; returns a node with an attached `setUnread(unread: boolean)` method for clearing the dot without a full topbar re-render. |
+| `createChangelogBell` | `() => HTMLButtonElement` | The composed factory every page actually uses — wires `changelog.js` + `changelogSeen.js` + `changelogDrawer.js` together with no per-page bookkeeping. No subscription/timer of its own, so no cleanup is needed in the route's teardown. |
+| `openChangelogDrawer` | `({ entries: ChangelogEntry[], onClose?: () => void }) => () => void` | Right-side slide-in drawer modeled on `itemPanel.js`'s `openItemPanel` — `role="dialog"`, `aria-labelledby` the "What's New" heading, `attachFocusTrap()` (Tab-cycling + Escape). Returns a `close()` function. `entries` is always the full changelog (newest first) — only the bell's badge is unread-scoped, the drawer itself always shows the full history. |
+
+## `src/core/changelog/featureBadge.js` — "New" feature badge eligibility (issue #20 Phase C)
+
+Pure — no DOM, no store, no localStorage. `changelog.json` items may carry an optional
+`featureKey` string identifying a specific UI element to badge (e.g. `"pwa-install"` on the
+"Install Ascent as an app" entry) — most items have no linked element and omit it.
+
+| Export | Signature | Notes |
+|---|---|---|
+| `FEATURE_BADGE_DURATION_MS` | `number` (7 days in ms) | How long a badge stays visible after it's first actually shown, absent an explicit dismissal. |
+| `isFeatureBadgeActive` | `({ introducedVersion: number \| null, lastSeenChangelogVersion: number \| null, state: { firstShownAt: number \| null, dismissed: boolean } \| null, now?: number }) => boolean` | `false` if `introducedVersion` is `null` (feature has no changelog entry), if `state.dismissed`, or if the introducing entry hasn't been seen yet (`lastSeenChangelogVersion < introducedVersion`). `true` the first time it's eligible (`state.firstShownAt == null`); after that, `true` only while `now - firstShownAt < FEATURE_BADGE_DURATION_MS`. A badge only ever becomes eligible **after** the user has opened the What's New drawer for the entry that introduces it — never before, per the issue's "one session after the user first sees the changelog entry" wording. |
+
+## `src/data/changelog.js`'s `getFeatureIntroducedVersion` (issue #20 Phase C)
+
+| Export | Signature | Notes |
+|---|---|---|
+| `getFeatureIntroducedVersion` | `(featureKey: string) => number \| null` | Scans `CHANGELOG` for the first item whose `featureKey` matches; returns that entry's `version`, or `null` if no shipped item references it. |
+
+## `src/services/featureBadgeSeen.js` — feature-badge state persistence (issue #20 Phase C)
+
+Device-level localStorage, same precedent as `changelogSeen.js` — a plain object keyed by
+`featureKey` under `KEYS.FEATURE_BADGE_STATE`, never synced to Firebase, never cleared on
+sign-out.
+
+| Export | Signature | Notes |
+|---|---|---|
+| `shouldShowFeatureBadge` | `(featureKey: string) => boolean` | Combines `getFeatureIntroducedVersion`, `getLastSeenChangelogVersion`, and the stored per-featureKey state through `isFeatureBadgeActive`. Records `firstShownAt` the first time it becomes eligible — safe to call on every render, a no-op write once already recorded. |
+| `dismissFeatureBadge` | `(featureKey: string) => void` | Permanently marks a featureKey's badge dismissed. Call from the feature's own interaction handler (e.g. a button's `onClick`), per the issue's "auto-dismisses after the user interacts with the feature" rule. |
+
+## `src/ui/components/featureBadge.js` — "New" pill component (issue #20 Phase C)
+
+| Export | Signature | Notes |
+|---|---|---|
+| `createFeatureBadge` | `(featureKey: string) => HTMLSpanElement \| null` | Returns `null` when not eligible, so call sites can drop it straight into an `el()` children array with the existing `.filter(Boolean)` convention. Renders `<span class="feature-new-badge">New</span>` when eligible. |
+| `dismissFeatureBadge` | re-exported from `featureBadgeSeen.js` | Convenience re-export so a UI call site only needs one import. |
