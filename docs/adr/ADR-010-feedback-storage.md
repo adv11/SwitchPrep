@@ -37,7 +37,14 @@ future admin dashboard can list every report in submission order without fetchin
 subtree per user — the security boundary is enforced by the write-time `.validate` rule
 requiring `newData.child('userId').val() == auth.uid` instead, which stops a client from
 forging a report under someone else's identity even though the path itself carries no
-uid. `firebaseStore.js` (`src/services/feedbackStore.js`) is a thin, stateless wrapper
+uid. Both `reports/{reportId}` and `users/{uid}/reports/{reportId}` are additionally
+**creation-only** — `".write"` requires `!data.exists()` on each — so an authenticated
+client can create a report but can never overwrite or delete one that already exists at
+that path, including one it created itself; every status transition is a manual,
+rules-bypassing Firebase-console edit instead (added after an automated security review
+of the initial rules, which only checked `userId === auth.uid` at write time and would
+otherwise have let any authenticated client tamper with an existing report by writing to
+its known/guessed key). `firebaseStore.js` (`src/services/feedbackStore.js`) is a thin, stateless wrapper
 around exactly two Firebase calls — not a fifth `create*Store()` alongside
 `roadmapStore.js`/`dailyTodoStore.js`/`activityLogStore.js` — because a report is a
 fire-and-forget write with nothing to keep in sync afterward, unlike every other store in
