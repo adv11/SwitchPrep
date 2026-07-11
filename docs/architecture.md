@@ -2851,10 +2851,19 @@ token blocks, every custom `<button>`-like class not in the `.btn` family, and
 hotfix, one new instance (`.notes-indicator`, same root cause — a bare `<button>` whose
 only content is a `currentColor` SVG icon with no explicit `color`), and confirmed
 `chartWrapper.js` hardcoded its brand line color and left Chart.js's default (light-tuned)
-axis/gridline colors untouched. No other genuine theme-unaware bugs were found — the
-token system itself (`:root`/`:root[data-theme='dark']`) is sound; every literal color
-outside it turned out to be the legitimate "fixed color on a fixed background" pattern,
-now annotated with a `/* intentional: ... */` comment explaining why.
+axis/gridline colors untouched. Every other literal color outside the `:root` blocks
+turned out to be the legitimate "fixed color on a fixed background" pattern, now
+annotated with a `/* intentional: ... */` comment explaining why.
+
+Re-enabling `color-contrast` in CI (below) then caught a real bug the static audit
+missed: `.badge.P0`–`.badge.P3` and `.filter-chip[data-p="…"].active` set fixed white
+text on `--p0`–`--p3`, correct in light theme (dark/saturated token values) but wrong in
+dark theme, where those same tokens are light pastels tuned for border/dot visibility,
+not for hosting white text (`.badge.P1` measured 1.66:1 in the CI run). Fixed with a
+`:root[data-theme='dark']` override switching both to `var(--soft)` text (>6:1 against
+all four dark-theme priority tokens) — a reminder that a rule reading a token isn't
+automatically theme-safe if that token's dark-mode value was tuned for a different
+purpose than the rule assumes.
 
 Two enforcement mechanisms, so the next gap doesn't ship silently again:
 - `accessibility.test.js`'s blanket `disableRules(['color-contrast'])` is gone.

@@ -1599,11 +1599,20 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .filter-chip:hover { transform: translateY(-1px); border-color: var(--line-strong); }
 .filter-chip:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
 .filter-chip.active { background: var(--emphasis-bg); border-color: var(--emphasis-bg); color: var(--emphasis-text); }
-/* intentional: fixed white text on a solid --p0../--p3 priority-color background, same in both themes (issue #116) */
+/* intentional: white text over --p0../--p3 in light theme; see the dark-theme override
+   further down for why dark theme needs a different text color here (issue #116) */
 .filter-chip[data-p="P0"].active { background: var(--p0); border-color: var(--p0); color: #fff; }
 .filter-chip[data-p="P1"].active { background: var(--p1); border-color: var(--p1); color: #fff; }
 .filter-chip[data-p="P2"].active { background: var(--p2); border-color: var(--p2); color: #fff; }
 .filter-chip[data-p="P3"].active { background: var(--p3); border-color: var(--p3); color: #fff; }
+/* Dark theme's --p0../--p3 are light pastel tokens (tuned for visibility against the dark
+   panel as borders/dots), not the dark/saturated values light theme uses — white text over
+   them fails WCAG contrast (issue #116 CI catch, e.g. P1 measured 1.66:1 against #fbbf24).
+   --soft (near-black) reads at >6:1 against all four dark-theme priority tokens. */
+:root[data-theme='dark'] .filter-chip[data-p="P0"].active,
+:root[data-theme='dark'] .filter-chip[data-p="P1"].active,
+:root[data-theme='dark'] .filter-chip[data-p="P2"].active,
+:root[data-theme='dark'] .filter-chip[data-p="P3"].active { color: var(--soft); }
 .chip-count { opacity: 0.75; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 
 /* Issue #6 Phase 4.3 — subtle hover shimmer: a diagonal highlight band swept
@@ -1613,6 +1622,7 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   content: '';
   position: absolute;
   inset: 0;
+  /* intentional: fixed white shimmer highlight, same in both themes (issue #116) */
   background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.35) 50%, transparent 60%);
   background-size: 220% 100%;
   background-position: 150% 0;
@@ -1995,7 +2005,10 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 }
 .phase-manage-row .field-input, .section-manage-row .field-input { flex: 1; }
 
-/* intentional: fixed white text — every .badge modifier sets a solid priority-color background, same in both themes (issue #116) */
+/* intentional: white text over --p0../--p3 in light theme, where those tokens are dark/saturated
+   enough for it — dark theme uses lighter pastel priority tokens instead (tuned for visibility
+   against the dark panel), which fail contrast against white text; see the dark-theme override
+   below (issue #116). */
 .badge {
   font-family: var(--mono);
   font-size: 9px;
@@ -2008,6 +2021,14 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .badge.P1 { background: var(--p1); }
 .badge.P2 { background: var(--p2); }
 .badge.P3 { background: var(--p3); }
+/* Dark theme's --p0../--p3 are light pastel tokens (tuned for visibility against the dark
+   panel), not the dark/saturated values light theme uses — white text over them fails WCAG
+   contrast (issue #116 CI catch, e.g. P1 measured 1.66:1 against #fbbf24). --soft (near-black)
+   reads at >6:1 against all four dark-theme priority tokens. */
+:root[data-theme='dark'] .badge.P0,
+:root[data-theme='dark'] .badge.P1,
+:root[data-theme='dark'] .badge.P2,
+:root[data-theme='dark'] .badge.P3 { color: var(--soft); }
 
 /* Checklist items */
 .check-item {
