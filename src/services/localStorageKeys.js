@@ -24,6 +24,12 @@ export const KEYS = {
   // { [todoId]: {...} } — Daily Todos (issue #56), a separate rolling-deadline
   // list stored independently of the roadmap stores above.
   DAILY_TODOS: 'ascent-daily-todos-v1',
+  // { [YYYY-MM-DD]: count } — daily completion counts (issue #8), a separate
+  // account-scoped synced store from the roadmap items above, following the
+  // same DAILY_TODOS pattern (not per-uid keyed, since it's one value per
+  // account, synced to Firebase, same as DAILY_TODOS). Survives an item
+  // later being unchecked — see activityLogStore.js.
+  ACTIVITY_LOG: 'ascent-activity-log-v1',
   // Collapse/expand state of the Today's Todos panel (issue #83) — a purely
   // cosmetic, device-level preference, not account data, so it follows
   // THEME's pattern (plain localStorage, read/written directly by the

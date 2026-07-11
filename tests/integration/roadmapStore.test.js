@@ -224,6 +224,146 @@ describe('completedAt (issue #18)', () => {
   });
 });
 
+// onCompletionToggle (issue #8) — the injected hook main.js wires to
+// activityLogStore.recordCompletion/recordUncompletion. Fires exactly once
+// per genuine done-transition, from updateItem() directly and, indirectly,
+// from setItemDoneInTemplate()'s three branches below.
+describe('onCompletionToggle (issue #8)', () => {
+  it('fires with +1 on a false -> true transition via updateItem', () => {
+    const onCompletionToggle = vi.fn();
+    const store = createRoadmapStore({ onCompletionToggle });
+    const firstId = Object.keys(store.getSnapshot().allItems)[0];
+
+    store.updateItem(firstId, { done: true });
+
+    expect(onCompletionToggle).toHaveBeenCalledTimes(1);
+    expect(onCompletionToggle).toHaveBeenCalledWith(1);
+  });
+
+  it('fires with -1 on a true -> false transition via updateItem', () => {
+    const onCompletionToggle = vi.fn();
+    const store = createRoadmapStore({ onCompletionToggle });
+    const firstId = Object.keys(store.getSnapshot().allItems)[0];
+
+    store.updateItem(firstId, { done: true });
+    onCompletionToggle.mockClear();
+    store.updateItem(firstId, { done: false });
+
+    expect(onCompletionToggle).toHaveBeenCalledTimes(1);
+    expect(onCompletionToggle).toHaveBeenCalledWith(-1);
+  });
+
+  it('does not fire on a non-done patch', () => {
+    const onCompletionToggle = vi.fn();
+    const store = createRoadmapStore({ onCompletionToggle });
+    const firstId = Object.keys(store.getSnapshot().allItems)[0];
+
+    store.updateItem(firstId, { notes: 'just a note' });
+
+    expect(onCompletionToggle).not.toHaveBeenCalled();
+  });
+
+  it('does not fire on a redundant done:true patch (already done)', () => {
+    const onCompletionToggle = vi.fn();
+    const store = createRoadmapStore({ onCompletionToggle });
+    const firstId = Object.keys(store.getSnapshot().allItems)[0];
+
+    store.updateItem(firstId, { done: true });
+    onCompletionToggle.mockClear();
+    store.updateItem(firstId, { done: true, notes: 'still working through this' });
+
+    expect(onCompletionToggle).not.toHaveBeenCalled();
+  });
+
+  it('does not fire on a redundant done:false patch (already not done)', () => {
+    const onCompletionToggle = vi.fn();
+    const store = createRoadmapStore({ onCompletionToggle });
+    const firstId = Object.keys(store.getSnapshot().allItems)[0];
+
+    store.updateItem(firstId, { done: false });
+
+    expect(onCompletionToggle).not.toHaveBeenCalled();
+  });
+
+  it('does not fire on addItem seeding', () => {
+    const onCompletionToggle = vi.fn();
+    const store = createRoadmapStore({ onCompletionToggle });
+
+    store.addItem({ title: 'New Topic', phase: 'Java Core', section: 'Basics', priority: 'P2' });
+
+    expect(onCompletionToggle).not.toHaveBeenCalled();
+  });
+
+  it('defaults to a no-op when omitted — createRoadmapStore() with no args still works', () => {
+    const store = createRoadmapStore();
+    const firstId = Object.keys(store.getSnapshot().allItems)[0];
+    expect(() => store.updateItem(firstId, { done: true })).not.toThrow();
+  });
+
+  it('fires exactly once via setItemDoneInTemplate on the active template (delegates to updateItem)', async () => {
+    const onCompletionToggle = vi.fn();
+    const store = createRoadmapStore({ onCompletionToggle });
+    await store.setUser({ uid: 'u1' });
+    const firstId = Object.keys(store.getSnapshot().allItems)[0];
+
+    const result = await store.setItemDoneInTemplate('java-backend', firstId, true);
+
+    expect(result.ok).toBe(true);
+    expect(onCompletionToggle).toHaveBeenCalledTimes(1);
+    expect(onCompletionToggle).toHaveBeenCalledWith(1);
+  });
+
+  it('fires via setItemDoneInTemplate on a cached (non-active) template', async () => {
+    const onCompletionToggle = vi.fn();
+    // 'frontend' must already be a started template *before* setUser resolves
+    // so switchRoadmap('frontend') below takes the resolveRoadmapItems path
+    // (which honors the getRoadmap mock) instead of seeding a fresh template.
+    dbApi.getMeta.mockResolvedValue({ onboardingDone: true, activeTemplateId: 'java-backend', startedTemplateIds: ['java-backend', 'frontend'] });
+    dbApi.getRoadmap.mockResolvedValue({
+      version: 1,
+      items: { 'other-item': { id: 'other-item', title: 'Other', done: false, deleted: false } }
+    });
+    const store = createRoadmapStore({ onCompletionToggle });
+    await store.setUser({ uid: 'u1' });
+
+    await store.switchRoadmap('frontend');
+    await store.switchRoadmap('java-backend');
+
+    const result = await store.setItemDoneInTemplate('frontend', 'other-item', true);
+
+    expect(result.ok).toBe(true);
+    expect(onCompletionToggle).toHaveBeenCalledWith(1);
+  });
+
+  it('fires via setItemDoneInTemplate on a cold (never-visited-this-session) template', async () => {
+    const onCompletionToggle = vi.fn();
+    const store = createRoadmapStore({ onCompletionToggle });
+    await store.setUser({ uid: 'u1' });
+    dbApi.getMeta.mockResolvedValue({ onboardingDone: true, activeTemplateId: 'java-backend', startedTemplateIds: ['java-backend', 'frontend'] });
+    dbApi.getRoadmap.mockResolvedValue({
+      version: 1,
+      items: { 'cold-item': { id: 'cold-item', title: 'Cold', done: false, deleted: false } }
+    });
+
+    const result = await store.setItemDoneInTemplate('frontend', 'cold-item', true);
+
+    expect(result.ok).toBe(true);
+    expect(onCompletionToggle).toHaveBeenCalledWith(1);
+  });
+
+  it('does not fire when setItemDoneInTemplate fails to find the item', async () => {
+    const onCompletionToggle = vi.fn();
+    const store = createRoadmapStore({ onCompletionToggle });
+    await store.setUser({ uid: 'u1' });
+    dbApi.getRoadmap.mockResolvedValue(null);
+
+    const result = await store.setItemDoneInTemplate('never-started', 'missing-item', true);
+
+    expect(result.ok).toBe(false);
+    expect(onCompletionToggle).not.toHaveBeenCalled();
+  });
+});
+
 // Issue #18 Phase B — restoring a JSON backup goes through this one store
 // method rather than ever mutating `items` directly, same contract addItem/
 // updateItem already give every other caller.

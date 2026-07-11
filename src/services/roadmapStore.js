@@ -108,6 +108,16 @@ function withDerivedCompletedAt(patch, wasDone) {
   return patch;
 }
 
+// The activityLog side effect (issue #8) rides the same done-transition
+// withDerivedCompletedAt() already detects — +1 on a genuine false->true
+// flip, -1 on a genuine true->false flip, 0 for anything else (a redundant
+// `{ done: false }` patch on an already-not-done item must not decrement).
+function completionDelta(patch, wasDone) {
+  if (patch.done === true && !wasDone) return 1;
+  if (patch.done === false && wasDone) return -1;
+  return 0;
+}
+
 // Shared by setItemDoneInTemplate()'s cached/cold cross-roadmap paths below —
 // its active-template path goes through updateItem()/withDerivedCompletedAt()
 // instead, so this only needs to cover the two paths that build a patched
@@ -172,7 +182,13 @@ function migrateLocalRoadmapsShape() {
   }
 }
 
-export function createRoadmapStore() {
+// onCompletionToggle(delta) — issue #8: fired once, with +1 or -1, exactly
+// when a done-transition is detected (see completionDelta() above), so
+// main.js can record it into activityLogStore without roadmapStore.js
+// importing that store directly (keeps this module independently testable
+// with no args, same as every existing call site/unit test already does —
+// defaults to a no-op).
+export function createRoadmapStore({ onCompletionToggle = () => {} } = {}) {
   // Reselected per sign-in (see setUser) via the single getStorageAdapter()
   // seam, so a future second backend never needs a call-site change here.
   let adapter = getStorageAdapter(null);
@@ -954,12 +970,14 @@ export function createRoadmapStore() {
     // exactly like it always has (issue #18).
     const isCosmetic = Object.keys(patch).every(key => key === 'done');
     if (!isCosmetic) structuralVersion += 1;
+    const delta = completionDelta(patch, items[id].done);
     items[id] = {
       ...items[id],
       ...withDerivedCompletedAt(patch, items[id].done),
       updatedAt: Date.now()
     };
     queueSave();
+    if (delta !== 0) onCompletionToggle(delta);
     return true;
   }
 
@@ -1001,6 +1019,7 @@ export function createRoadmapStore() {
     const cached = roadmapCache[templateId];
     if (cached?.items) {
       if (!cached.items[itemId] || cached.items[itemId].deleted) return { ok: false, title: null };
+      const wasDone = cached.items[itemId].done;
       const patchedItem = {
         ...cached.items[itemId],
         done,
@@ -1024,6 +1043,8 @@ export function createRoadmapStore() {
           return { ok: false, title: null };
         }
       }
+      const delta = completionDelta({ done }, wasDone);
+      if (delta !== 0) onCompletionToggle(delta);
       return { ok: true, title: patchedItem.title };
     }
 
@@ -1038,6 +1059,7 @@ export function createRoadmapStore() {
     const localBlob = readLocalRoadmaps()[templateId];
     const baseItems = remote?.items || localBlob?.items;
     if (!baseItems?.[itemId] || baseItems[itemId].deleted) return { ok: false, title: null };
+    const wasDone = baseItems[itemId].done;
     const basePhases = normalizeStringArray(remote?.phases) || normalizeStringArray(localBlob?.phases) || [];
     const patchedItem = {
       ...baseItems[itemId],
@@ -1061,6 +1083,8 @@ export function createRoadmapStore() {
         return { ok: false, title: null };
       }
     }
+    const delta = completionDelta({ done }, wasDone);
+    if (delta !== 0) onCompletionToggle(delta);
     return { ok: true, title: patchedItem.title };
   }
 

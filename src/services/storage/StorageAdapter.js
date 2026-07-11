@@ -68,6 +68,19 @@ export class StorageAdapter {
     return Promise.resolve();
   }
 
+  // activityLog (issue #8) — another sibling data path, same optional/
+  // safe-no-op-default shape as listenDailyTodos/saveDailyTodos above.
+  // `_onData` receives the plain `{ [dateString]: count }` map (or `null`).
+  listenActivityLog(_uid, onData) {
+    onData(null);
+    return () => {};
+  }
+
+  /** Full overwrite of the user's activity-log map. */
+  saveActivityLog(_uid, _payload) {
+    return Promise.resolve();
+  }
+
   /** Cleans up any open listeners/timers. No-op unless a backend needs it. */
   destroy() {}
 }

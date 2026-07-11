@@ -2,9 +2,11 @@
 paths:
   - "src/services/roadmapStore.js"
   - "src/services/dailyTodoStore.js"
+  - "src/services/activityLogStore.js"
   - "src/services/storage/**"
   - "src/core/roadmap/**"
   - "src/core/dailyTodo/**"
+  - "src/core/analytics/**"
   - "src/data/templates/**"
   - "src/data/importPrompt.js"
   - "src/data/roadmap.js"
@@ -660,5 +662,36 @@ the same field alongside the existing `completedViaTodoAt` via a small
 `completedViaTodoAt` only tracks completion through a linked Daily Todo (cleared the
 moment either side is unchecked, per the "Linking a roadmap topic" section above), while
 `completedAt` tracks completion generally, through any path.
+
+**`activityLogStore.js` and the `onCompletionToggle` hook (issue #8, part 1 — data layer
+only, no UI yet).** A fourth store alongside `roadmapStore.js`/`dailyTodoStore.js`
+(`src/services/activityLogStore.js`), same Store pattern precedent as `dailyTodoStore.js`
+above, tracking a flat `{ [YYYY-MM-DD]: count }` map of items completed per day at
+`users/{uid}/activityLog` (a new explicit `.validate` rule block in
+`firebase/database.rules.json`, sibling to `dailyTodos`) plus `KEYS.ACTIVITY_LOG`
+locally. It exists **separately from `item.completedAt` specifically because it survives
+an item later being unchecked** — `completedAt` is cleared to `null` the moment `done`
+flips back to `false`, so a day's real completion count would otherwise be lost the
+instant a user un-checks something; `activityLog` is append-only for past days (only the
+current day is ever written) — see `docs/adr/ADR-009-analytics-data-model.md`.
+`createRoadmapStore()` takes an optional `onCompletionToggle(delta)` hook (`delta` is `+1`
+or `-1`; defaults to a no-op so every existing call site, including every test calling
+`createRoadmapStore()` with no args, is unaffected) fired exactly once per genuine
+done-transition — from `updateItem()` directly, and from all three branches of
+`setItemDoneInTemplate()` (its active-template branch already delegates to `updateItem()`
+so it gets this for free; its cached/cold cross-roadmap branches compute the same
+`completionDelta()` themselves before returning `{ ok: true }`). Deliberately **not** a
+direct import of `activityLogStore.js` into `roadmapStore.js` — `main.js` is the one place
+that wires `onCompletionToggle: delta => delta > 0 ? activityLogStore.recordCompletion() : activityLogStore.recordUncompletion()`,
+keeping `roadmapStore.js` importable and unit-testable with zero knowledge of the
+analytics feature. If you add a new call site that flips `done` without going through
+`updateItem()`/`setItemDoneInTemplate()`, it must call `onCompletionToggle` itself or
+activity tracking silently misses it. The pure computation layer
+(`src/core/analytics/`: `streaks.js`/`velocity.js`/`heatmapData.js`/`projection.js`/
+`analyticsEngine.js`) reads `activityLogStore`'s snapshot but never writes to it, and
+merges it with a backfill derived from items' `completedAt` (`buildEffectiveActivityLog()`
+in `analyticsEngine.js`) so an account with months of progress from before this feature
+existed doesn't see an empty heatmap — the real `activityLog` always wins for any day it
+has an entry for, so a since-unchecked completion is never resurrected from the backfill.
 
 **Client-side length caps on title/resource fields (`src/core/roadmap/limits.js`, issue #53) — the client-side half of issue #24's server-side Firebase rules.** `MAX_TITLE_LENGTH` (200), `MAX_RESOURCE_LABEL_LENGTH` (120), and `MAX_RESOURCE_URL_LENGTH` (2048) live in their own dependency-free module — never define these constants directly in `roadmapStore.js`, since `itemPanel.js` needs to import just the numbers without pulling in `roadmapStore.js`'s Firebase-backed storage-adapter chain (`adapterFactory.js` → `FirebaseAdapter.js` → `firebase.js`'s `https://` SDK imports), which breaks under Node's ESM loader in any test that doesn't mock `firebase.js`. `roadmapStore.js`'s `addItem()`, `updateItem()`, `addResource()`, and `updateResource()` — the only places these fields are ever written — reject (returning `false`, mutating nothing) a value over these caps; callers must check the return value, same convention as the item-count cap above. `itemPanel.js`'s Save/Add-resource handlers and `dashboard.js`'s quick-add row surface a friendly message using the same constants before the store call is even attempted — always keep the UI-layer message and the store-layer cap using the same imported constant, never a hardcoded number in either place.
