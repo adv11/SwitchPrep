@@ -1164,6 +1164,19 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 
 /* Mobile (<640px) — sidebar hidden by default, opens as a drawer on hamburger tap. */
 @media (max-width: 639px) {
+  /* `.app-shell-main { grid-column: 2; }` (unconditional, above) is only
+     correct while the explicit grid actually has 2 columns. At this
+     breakpoint `.app-sidebar` is `position: fixed` (out of flow) and the
+     grid collapses to a single explicit column — but `.app-shell-main`
+     staying pinned to "column 2" forces the browser to synthesize an
+     implicit second column to satisfy that placement, splitting the
+     viewport width between a phantom empty column and the real content
+     instead of giving it the full 1fr. This happened to resolve to 0px on
+     `dashboard.js`'s specific content shape (invisible) but produced a real,
+     visible blank gutter on `settings.js` (reported live, issue #16 follow-
+     up, screenshotted at multiple narrow desktop-browser widths). Pin it
+     back to column 1 — the only explicit column that exists here. */
+  .app-shell-main { grid-column: 1; }
   .app-shell-2 { grid-template-columns: 1fr; }
   .app-sidebar {
     position: fixed;

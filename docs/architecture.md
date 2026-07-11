@@ -2547,5 +2547,26 @@ and dropdown entry. Verified live against the Firebase Auth/Database emulator vi
 throwaway Playwright driver (not committed): guest view shows only the CTA card; a
 signed-in account's Profile/Preferences/Data/Danger-zone sections all render; expanding
 and submitting both the change-email and change-password forms actually call
-`authApi.updateEmail`/`authApi.updatePassword` and show the expected toast. `npm test`
-(622 passed) and `npm run lint` (0 errors, same 24 pre-existing warnings) green.
+`authApi.updateEmail`/`authApi.updatePassword` and show the expected toast.
+
+**Follow-up fix, reported live (real browser window, not devtools emulation) at several
+narrow desktop-browser widths (~420–620px), in both themes:** a real blank gutter down
+the left side of `#/settings`, roughly a third of the viewport, with the page's actual
+content squeezed into the remainder. Root cause turned out to be a pre-existing, shared
+app-shell bug that this page's specific content shape was the first to expose visibly,
+not anything unique to `settings.js` itself. `.app-shell-main { grid-column: 2; }`
+(`app.css`, unconditional) is only correct while `.app-shell-2`'s explicit grid actually
+has 2 columns. At the ≤639px breakpoint the grid collapses to one explicit column
+(`.app-sidebar` goes `position: fixed`, out of flow) — but `.app-shell-main` staying
+pinned to "column 2" (which no longer exists in the explicit grid) forces the browser to
+synthesize an implicit second column to satisfy that placement, splitting the viewport
+between a phantom auto-sized column and the real content instead of giving the content
+the full `1fr`. Confirmed via `getComputedStyle(...).gridTemplateColumns` returning two
+track values instead of one at these widths. This phantom column happened to resolve to
+`0px` on `dashboard.js`'s particular content shape (invisible, so the bug went
+unnoticed there for as long as `.app-shell-main{grid-column:2}` has existed) but resolved
+to a real nonzero width on `settings.js`'s. Fixed by adding `.app-shell-main { grid-column: 1; }`
+inside the `≤639px` media block — the only explicit column that exists there — confirmed
+via a width sweep (300–900px) checking `.app-shell-main`'s real `getBoundingClientRect()`,
+not just the computed grid-template-columns string. `npm test` (622 passed) and
+`npm run lint` (0 errors, same 24 pre-existing warnings) still green after the fix.
