@@ -86,16 +86,29 @@ export function resizeUntilUnderLimit(canvas, maxBytes, createCanvas = () => doc
   return dataUrl;
 }
 
+// Captured screenshots must exclude the feedback UI itself — the trigger
+// button (`.feedback-widget-trigger`) *and* the open modal it's called from
+// (`.modal-overlay`), or the report screenshot just shows the reporting
+// widget covering whatever the user was actually trying to capture. The
+// original default, a single literal `.feedback-widget` class, never
+// matched anything real (the trigger's actual class is
+// `.feedback-widget-trigger`; the modal's is `.modal-overlay`/
+// `.feedback-modal-card`) — reported live (issue #9 follow-up), the capture
+// silently included the modal every time.
+export const DEFAULT_EXCLUDE_SELECTOR = '.feedback-widget-trigger, .modal-overlay';
+
 // Captures the current page as a base64 PNG, blurring sensitive UI regions
 // first, then resizing until it fits under MAX_SCREENSHOT_BYTES. Returns
 // `{ dataUrl, omitted }` — `omitted: true` means the capture is still over
 // the cap after resizing attempts and should not be attached.
-export async function captureScreenshot({ excludeSelector = '.feedback-widget' } = {}) {
+export async function captureScreenshot({ excludeSelector = DEFAULT_EXCLUDE_SELECTOR } = {}) {
   const html2canvas = await loadHtml2Canvas();
   const canvas = await html2canvas(document.body, {
     useCORS: true,
     scale: Math.min(window.devicePixelRatio || 1, 2),
-    ignoreElements: el => el.classList?.contains(excludeSelector.replace('.', ''))
+    // el.matches() supports the full multi-selector string above — the
+    // previous classList.contains(single-class-only) hack couldn't.
+    ignoreElements: el => el.matches?.(excludeSelector) ?? false
   });
   blurSensitiveRegions(canvas, document.body);
   const dataUrl = resizeUntilUnderLimit(canvas, MAX_SCREENSHOT_BYTES);

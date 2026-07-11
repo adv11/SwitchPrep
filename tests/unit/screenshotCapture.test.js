@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { resizeUntilUnderLimit, readUploadedImage, MAX_UPLOAD_BYTES, SENSITIVE_SELECTORS, blurSensitiveRegions } from '../../src/ui/components/screenshotCapture.js';
+import { resizeUntilUnderLimit, readUploadedImage, MAX_UPLOAD_BYTES, SENSITIVE_SELECTORS, blurSensitiveRegions, DEFAULT_EXCLUDE_SELECTOR } from '../../src/ui/components/screenshotCapture.js';
 
 // A fake canvas whose toDataURL() shrinks in half each time it's asked,
 // simulating a real canvas's output shrinking as width/height halve —
@@ -53,6 +53,28 @@ describe('resizeUntilUnderLimit', () => {
     });
     const result = resizeUntilUnderLimit(neverShrinksEnough, 1, createCanvas);
     expect(result.length).toBe(10_000_000);
+  });
+});
+
+// Regression coverage for a real, live-reported bug (issue #9 follow-up):
+// the original default excludeSelector, `.feedback-widget`, never matched
+// any real element — the trigger button's actual class is
+// `.feedback-widget-trigger` and the open modal's is `.modal-overlay` — so
+// html2canvas's ignoreElements callback never skipped either one, and the
+// captured screenshot always showed the feedback modal covering whatever
+// the user was actually trying to capture.
+describe('DEFAULT_EXCLUDE_SELECTOR', () => {
+  it('matches the real feedback widget trigger and modal overlay classes', () => {
+    const trigger = document.createElement('button');
+    trigger.className = 'feedback-widget-trigger';
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const unrelated = document.createElement('div');
+    unrelated.className = 'phase-card';
+
+    expect(trigger.matches(DEFAULT_EXCLUDE_SELECTOR)).toBe(true);
+    expect(overlay.matches(DEFAULT_EXCLUDE_SELECTOR)).toBe(true);
+    expect(unrelated.matches(DEFAULT_EXCLUDE_SELECTOR)).toBe(false);
   });
 });
 

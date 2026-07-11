@@ -100,6 +100,35 @@ test.describe('feedback widget — type selector and forms (no Firebase needed)'
     await expect(page.locator('.feedback-screenshot-preview')).toBeHidden();
     await expect(removeBtn).toBeHidden();
   });
+
+  // Regression coverage for a second bug reported alongside the fix above:
+  // the captured image used to show only the feedback modal itself (its
+  // exclude selector matched nothing real), so a screenshot taken from any
+  // page looked identical — just the modal. Capturing from two pages with
+  // visibly different underlying content and asserting the two resulting
+  // images differ proves the *page*, not just the modal, is what's actually
+  // being captured.
+  test('captured screenshot reflects the actual underlying page, not just the feedback modal', async ({ page }) => {
+    // This app's router is hash-only (SPA, no reload between routes), so a
+    // modal left open on one route stays open — and intercepts clicks — on
+    // the next; each capture must close its own modal before navigating on.
+    async function captureDataUrl(route) {
+      await page.goto(route);
+      await page.locator('.feedback-widget-trigger').waitFor({ state: 'attached' });
+      await page.locator('.feedback-widget-trigger').click({ force: true });
+      await page.locator('.feedback-type-card', { hasText: 'General feedback' }).click();
+      await page.locator('button', { hasText: 'Capture current screen' }).click();
+      await expect(page.locator('.feedback-screenshot-preview')).toBeVisible({ timeout: 10_000 });
+      const dataUrl = await page.locator('.feedback-screenshot-preview').getAttribute('src');
+      await page.locator('.feedback-modal-close').click();
+      await expect(page.locator('.modal-overlay')).toHaveCount(0);
+      return dataUrl;
+    }
+
+    const signInCapture = await captureDataUrl('/#/signin');
+    const signUpCapture = await captureDataUrl('/#/signup');
+    expect(signInCapture).not.toBe(signUpCapture);
+  });
 });
 
 test.describe('feedback widget — full submit flow (requires Firebase emulator)', () => {
