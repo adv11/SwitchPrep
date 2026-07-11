@@ -8,6 +8,12 @@ contributors) are expected to code against. For the *why* behind these decisions
 
 ## `createRoadmapStore()` — `src/services/roadmapStore.js`
 
+`createRoadmapStore({ onCompletionToggle }?)` — `onCompletionToggle` (issue #8) is an
+optional `(delta: 1 | -1) => void` callback, defaulting to a no-op, fired exactly once
+per genuine `done` transition (from `updateItem` directly, and from all three branches
+of `setItemDoneInTemplate`). `main.js` wires it to `activityLogStore`'s
+`recordCompletion`/`recordUncompletion` — see `.claude/rules/roadmap-store.md`.
+
 Returns a store instance with the following methods.
 
 | Method | Signature | Notes |
@@ -219,6 +225,45 @@ Pure — no DOM, no side effects.
 |---|---|---|
 | `detectLinkType` | `(url: string) => string` | Detects a resource's link type from its hostname/path: `'youtube'`, `'github'`, `'notion'`, `'google-doc'`, `'google-drive'`, `'medium'`, `'stackoverflow'`, or the fallback `'article'` for any other http/https URL. Never throws — an unparseable string, a non-http(s) protocol (e.g. `javascript:`), or `undefined` all resolve to `'article'`. |
 | `LINK_TYPE_META` | `Record<string, { label: string, icon: string, badgeClass: string }>` | Display metadata for every `detectLinkType` return value — the resource card badge (`itemPanel.js`) and the checklist row's resource-count tooltip breakdown (`dashboard.js`) both read from this instead of hardcoding their own icon/label per type. |
+
+## `createActivityLogStore()` — `src/services/activityLogStore.js` (issue #8)
+
+Same store pattern as `createDailyTodoStore()` — mutable map, `subscribe`/`notify`,
+debounced local+Firebase sync, echo/dirty guards, sign-out privacy guard. See
+`.claude/rules/roadmap-store.md` for why this exists separately from
+`item.completedAt`.
+
+| Method | Signature | Notes |
+|---|---|---|
+| `subscribe` | `(callback: (snapshot) => void) => unsubscribe` | Calls `callback` immediately, then on every `notify()`. Snapshot: `{ uid, entries: Record<string, number>, dirty, ...meta }`. |
+| `setUser` | `async (user: { uid } \| null) => void` | **Must be awaited.** Loads local data, prunes entries older than 365 days (forcing `dirty` if anything was actually dropped), attaches the Firebase listener. Same `stateCallId` staleness guard as `roadmapStore`/`dailyTodoStore`. |
+| `getSnapshot` | `(meta?: object) => Snapshot` | Synchronous. |
+| `recordCompletion` | `(now?: number) => void` | Increments the current calendar day's count by 1. Never touches any other day. |
+| `recordUncompletion` | `(now?: number) => void` | Decrements the current calendar day's count by 1, floored at 0. Never touches any other day. |
+| `flush` | `async () => void` | Immediately persists `entries` to `localStorage` and (if signed in) Firebase, bypassing the debounce. |
+
+`pruneOldEntries(entries, now?, maxAgeDays = 365)` is also exported standalone (pure) for
+direct unit testing.
+
+## `computeAnalytics()` and friends — `src/core/analytics/` (issue #8)
+
+Pure functions — no DOM, no store access, no side effects. Safe to unit test with any
+plain data. `items` throughout is a roadmap snapshot's non-deleted item list
+(`store.getSnapshot().items`); `activityLog` is `activityLogStore.getSnapshot().entries`.
+
+| Export | Module | Signature | Notes |
+|---|---|---|---|
+| `computeAnalytics` | `analyticsEngine.js` | `(items, activityLog, now?) => { overview, streaks, velocity, phaseBreakdown, priorityBreakdown, heatmapData, projection }` | Composes every sub-metric below. Internally merges `activityLog` with a backfill derived from items' `completedAt` (see `buildEffectiveActivityLog`) before computing anything date-based. |
+| `computeOverview` | `analyticsEngine.js` | `(items) => { total, done, pct }` | |
+| `computePhaseBreakdown` | `analyticsEngine.js` | `(items) => { phase, done, total, pct }[]` | Sorted ascending by `pct` (least complete first). |
+| `computePriorityBreakdown` | `analyticsEngine.js` | `(items) => { phase, priorities: Record<'P0'\|'P1'\|'P2'\|'P3', { done, total }> }[]` | An invalid/missing `priority` is bucketed as `P2`. |
+| `buildEffectiveActivityLog` | `analyticsEngine.js` | `(items, activityLog) => Record<string, number>` | Merges a log derived from items' `effectiveCompletedAt` underneath the real `activityLog` — the real log always wins for any day it has an entry for (even an explicit `0`), so a since-unchecked completion is never resurrected. |
+| `effectiveCompletedAt` | `analyticsEngine.js` | `(item) => number \| null` | Backfill for pre-issue-#18 data: `item.completedAt` if set, else `item.updatedAt` if `done`, else `null`. Never written back to the item. |
+| `computeStreaks` | `streaks.js` | `(activityLog, now?) => { current, longest }` | A day "counts" if its entry is `>= 1`. Today with 0 activity doesn't break the current streak, just doesn't extend it. |
+| `computeVelocity` | `velocity.js` | `(activityLog, now?) => number` | Average items/day over the trailing 7 calendar days (today inclusive); the denominator is always 7. |
+| `computeHeatmap` | `heatmapData.js` | `(activityLog, now?) => { date, count, level, isToday }[]` | Always exactly 364 cells (52×7), oldest first. `level` is bucketed 0/1/2/3/4 from count thresholds 0 / 1-2 / 3-4 / 5-6 / 7+ (`heatLevel`, also exported). |
+| `computeProjection` | `projection.js` | `(items, activityLog, now?) => { remainingItems, velocity, daysToComplete?, projectedDate?, boostedDaysToComplete?, boostedProjectedDate?, complete?, noRecentActivity? }` | `complete: true` if nothing remains; `noRecentActivity: true` if 7-day velocity is 0 and work remains; otherwise both a current-pace and a "+2 items/day" boosted projection. |
+| `dateKey` / `previousDateKey` | `dateKey.js` | `(timestamp?) => 'YYYY-MM-DD'` / `(key) => 'YYYY-MM-DD'` | Local calendar-day key — the single source of truth every module above and `activityLogStore.js` share for "which day did this happen on." |
 
 ## `src/services/firebase.js`
 

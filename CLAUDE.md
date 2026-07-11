@@ -12,7 +12,7 @@ Ascent ("Engineer your next move.") is a personal roadmap tracker for anyone lea
 
 This file only holds conventions that are short and apply almost everywhere. Everything else — long, feature-specific "why we built it this way" reference material — lives in files that load only when you're actually touching the relevant code, so every session doesn't pay for content unrelated to the task at hand (issue #86; see `docs/adr/ADR-007-agent-memory-architecture.md` for the full rationale and measurements).
 
-- **`.claude/rules/roadmap-store.md`** — loads when touching `roadmapStore.js`, `dailyTodoStore.js`, `core/roadmap/**`, `core/dailyTodo/**`, `data/templates/**`, `dashboard.js`, `onboarding.js`, or the daily-todo/import/newRoadmap components. Store contracts, `structuralVersion`, echo/dirty/stale-listener guards, multi-roadmap, custom-roadmap CRUD, AI import, Daily Todos + roadmap-topic linking.
+- **`.claude/rules/roadmap-store.md`** — loads when touching `roadmapStore.js`, `dailyTodoStore.js`, `activityLogStore.js`, `core/roadmap/**`, `core/dailyTodo/**`, `core/analytics/**`, `data/templates/**`, `dashboard.js`, `onboarding.js`, or the daily-todo/import/newRoadmap components. Store contracts, `structuralVersion`, echo/dirty/stale-listener guards, multi-roadmap, custom-roadmap CRUD, AI import, Daily Todos + roadmap-topic linking, activity-log/analytics data layer (issue #8).
 - **`.claude/rules/ui-styling.md`** — loads when touching `app.css`, `theme.js`, `themeBootstrap.js`, `index.html`, or any page/component. Theming, card/grid layout, responsive breakpoints, touch/hover detection, safe-area insets, modal overflow.
 - **`.claude/rules/auth-security.md`** — loads when touching `firebase.js`, `authCleanup.js`, `accountGuards.js`, `signIn.js`/`signUp.js`, `password.js`, `index.html`, or `database.rules.json`. SRI/CSP lockstep updates, password reset, account deletion ordering, anonymous-user cleanup.
 - **`.claude/rules/content-style.md`** — loads when touching any page/component with user-facing text. Plain-language/grammar convention, button labels, error messages.
@@ -66,7 +66,9 @@ src/services/localStorageKeys.js  canonical `ascent-*` localStorage/sessionStora
 src/services/migration.js     one-time migration off the pre-rename `switchprep-*` key prefix
 src/services/roadmapStore.js  in-memory roadmap store — see .claude/rules/roadmap-store.md
 src/services/dailyTodoStore.js  in-memory Daily Todos store — see .claude/rules/roadmap-store.md
+src/services/activityLogStore.js  daily completed-item counts, feeds analytics (issue #8) — see .claude/rules/roadmap-store.md
 src/services/storage/         storage backend interface + FirebaseAdapter (+ withTimeout.js) + LocalStorageAdapter + adapterFactory — see .claude/rules/roadmap-store.md
+src/core/analytics/           pure analytics engine (streaks/velocity/heatmap/projection), no DOM/store access — see .claude/rules/roadmap-store.md
 src/services/theme.js         dark/light theme state — see .claude/rules/ui-styling.md
 src/services/themeBootstrap.js  synchronous classic script, no-FOUC — see .claude/rules/ui-styling.md
 src/ui/router.js              tiny hash router (registerRoute/navigate/startRouter)

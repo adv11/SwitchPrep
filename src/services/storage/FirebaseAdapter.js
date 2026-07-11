@@ -49,6 +49,20 @@ export class FirebaseAdapter extends StorageAdapter {
     return withTimeout(set(this.dailyTodosRef(uid), payload), FIREBASE_TIMEOUT_MS, 'Timed out saving Daily Todos to Firebase');
   }
 
+  activityLogRef(uid) {
+    return ref(database, `users/${uid}/activityLog`);
+  }
+
+  listenActivityLog(uid, callback, onError) {
+    const logRef = this.activityLogRef(uid);
+    onValue(logRef, snapshot => callback(snapshot.exists() ? snapshot.val() : null), onError);
+    return () => off(logRef);
+  }
+
+  saveActivityLog(uid, payload) {
+    return withTimeout(set(this.activityLogRef(uid), payload), FIREBASE_TIMEOUT_MS, 'Timed out saving activity log to Firebase');
+  }
+
   listenRoadmap(uid, templateId, callback, onError) {
     const roadmapRef = this.roadmapRef(uid, templateId);
     // Unwrap Firebase's DataSnapshot here so the adapter interface's callback

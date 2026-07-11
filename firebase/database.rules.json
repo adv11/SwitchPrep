@@ -66,6 +66,11 @@
             "linkedItemTitle": { ".validate": "newData.isString() || newData.val() === null" }
           }
         },
+        "activityLog": {
+          "$date": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          }
+        },
         "$other": {
           ".validate": "false"
         }

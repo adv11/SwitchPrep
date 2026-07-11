@@ -2626,3 +2626,58 @@ existing locator that touches an affected element already targets a CSS class, n
 so none needed updating. New "Icon system" section added to
 `.claude/rules/ui-styling.md` documenting the three pieces above and when to reach for
 `createIcon()` vs. emoji for any future icon.
+
+### 2026-07-11 — PR TBD — Progress analytics data layer: activityLogStore + analyticsEngine, no UI yet (issue #8, part 1 of 3)
+
+First of three PRs for issue #8 (Progress analytics — heatmap, charts, streaks,
+velocity, share card). This one ships only the data layer: no new route, no new page,
+nothing rendered. `item.completedAt` (the issue's originally-planned prerequisite) had
+already shipped as part of issue #18 by the time this work started — confirmed via a
+codebase survey before implementation began, so that half of the original issue spec was
+dropped from this PR entirely rather than redone.
+
+A new fourth store, `src/services/activityLogStore.js`, tracks a flat
+`{ [YYYY-MM-DD]: count }` map of items completed per day — same Store pattern precedent
+as `dailyTodoStore.js` (debounced local+Firebase sync, echo/dirty guards, sign-out
+privacy guard, its own duplicated `stableStringify`), synced to a new
+`users/{uid}/activityLog` Firebase path (new explicit `.validate` rule block in
+`firebase/database.rules.json`, sibling to `dailyTodos` — the `$other` catch-all under
+`users/$uid` required this) and a new `KEYS.ACTIVITY_LOG` localStorage key. It exists
+separately from `item.completedAt` specifically because it survives an item later being
+unchecked, where `completedAt` does not — see the new
+`docs/adr/ADR-009-analytics-data-model.md` for the full decision writeup. Entries older
+than 365 days are pruned on every load; pruning forces the store `dirty` so the trim
+actually flushes to Firebase instead of silently living only in memory (and being
+overwritten right back by a stale, un-pruned remote echo — a real bug caught by this
+PR's own integration tests, not a hypothetical).
+
+`roadmapStore.js`'s `createRoadmapStore()` gained an optional `onCompletionToggle(delta)`
+constructor hook (`delta` is `+1`/`-1`, defaults to a no-op) fired exactly once per
+genuine `done` transition — from `updateItem()` directly, and from all three branches of
+`setItemDoneInTemplate()`. `main.js` wires it to
+`activityLogStore.recordCompletion()`/`recordUncompletion()`; `roadmapStore.js` itself
+never imports `activityLogStore.js`, keeping it independently testable with zero args
+exactly as every pre-existing test already does.
+
+New `src/core/analytics/` directory — pure, DOM-free, store-free functions:
+`dateKey.js` (shared local-calendar-day key, used by both `activityLogStore.js` and
+every module below so they can never disagree about day boundaries), `streaks.js`,
+`velocity.js`, `heatmapData.js`, `projection.js`, and the composing `analyticsEngine.js`
+(`computeAnalytics`/`computeOverview`/`computePhaseBreakdown`/`computePriorityBreakdown`).
+`analyticsEngine.js` also backfills pre-feature history: `buildEffectiveActivityLog()`
+merges a log derived from every item's `completedAt`/`updatedAt` underneath the real
+`activityLog` — the real log always wins for any day it has an entry for (even an
+explicit `0`), so a since-unchecked completion is never resurrected by the backfill, and
+an account with months of prior progress doesn't open the eventual Progress page to an
+empty heatmap.
+
+New tests: `tests/integration/activityLogStore.test.js` (local persistence,
+increment/decrement floor-0, pruning, sign-out guard, Firebase echo/dirty guard —
+mirrors `tests/integration/dailyTodoStore.test.js`'s structure), `tests/unit/analytics/`
+(one file per pure module: `dateKey`, `streaks`, `velocity`, `heatmapData`, `projection`,
+`analyticsEngine`), and a new `onCompletionToggle` describe block appended to
+`tests/integration/roadmapStore.test.js` covering both `updateItem()` and all three
+`setItemDoneInTemplate()` branches. PR2 (Progress page UI: heatmap, stat cards,
+Chart.js-via-pinned-CDN line/bar charts, phase/priority breakdowns, projection card) and
+PR3 (canvas share card, sidebar nav entry) follow as separate PRs against this one's
+base, per the issue's own suggested phasing.
