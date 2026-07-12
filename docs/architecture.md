@@ -3072,3 +3072,34 @@ no new files added — pure follow-up to the same components. Four pieces:
 See `.claude/rules/roadmap-store.md`'s updated "AI-assisted roadmap creation" and "Prompt
 customization inputs" sections, and `.claude/rules/ui-styling.md`'s new "sticky-by-layout"
 section, for the full writeup.
+
+### 2026-07-12 — PR TBD — Fix real-world validation false-positives on resource URLs/priority casing; restore CI (issue #100 follow-up)
+
+Real-world testing of the resources feature above surfaced two problems:
+
+1. **Roadmaps were failing validation intermittently** — "item is invalid" errors spread
+   across many unrelated topics, sometimes on the first and second generation attempt.
+   Traced to two AI-output quirks previously treated as hard failures: a resource URL
+   missing its `https://` scheme (very common — `docs.docker.com` "looks complete" to a
+   model without it), and a priority value with different casing/whitespace (`p0`,
+   ` P0 `). Fixed by normalizing priority (trim + uppercase, `normalizePriority()` in
+   `importValidator.js`, applied everywhere a priority is checked) and by moving resource
+   URL *protocol* correctness entirely out of validation and into
+   `adaptImportToRoadmap()`'s new `sanitizeResources()` — auto-prepends `https://` to a
+   bare-domain URL, silently drops a resource whose URL is still invalid after that,
+   never fails the whole topic over one bad link. A secondary symptom this also fixes:
+   some AI assistants, after repeated "fix it and resend" round-trips, gave up and
+   stopped including resources at all — with roadmaps succeeding on the first real
+   attempt far more often, resources now come through as originally generated.
+2. **CI was red on the PR** — two unrelated causes, both now fixed: (a) ESLint's
+   theme-correctness check (`scripts/lint-theme.mjs`) flagged `.import-step-badge`'s
+   `color: #fff` for missing the required `/* intentional: ... */` comment (issue #116's
+   convention) — added, same pattern as `.reset-success-icon`/`.template-card-delete:hover`
+   above it in `app.css`. (b) `tests/e2e/customRoadmap.test.js` was missed when manual
+   "start truly blank" creation was retired — it still drove the deleted title/description
+   modal to seed its test roadmaps. Rewritten to seed via the AI-import flow (a minimal
+   valid paste) instead; the actual manual phase/section/topic CRUD the file exists to
+   test (dashboard-level, untouched by #100) is unchanged.
+
+See `.claude/rules/roadmap-store.md`'s new "A single malformed resource URL or oddly-cased
+priority must never fail the whole roadmap" section for the full writeup.

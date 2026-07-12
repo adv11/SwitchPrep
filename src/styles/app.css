@@ -1432,6 +1432,7 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .import-column-scroll { display: grid; gap: 14px; align-content: start; }
 .import-step-heading { display: flex; align-items: center; gap: 10px; font-size: var(--text-sm); font-weight: 800; color: var(--ink); margin: 6px 0 0; }
 .import-step-heading:first-child { margin-top: 0; }
+/* intentional: fixed white text on a solid --brand background, same theme-agnostic pattern as .reset-success-icon/.template-card-delete:hover above (issue #116) */
 .import-step-badge {
   flex-shrink: 0;
   display: inline-flex;

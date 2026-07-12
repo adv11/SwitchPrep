@@ -218,6 +218,42 @@ describe('validateImportPayload — item-level', () => {
   });
 });
 
+// LLM output commonly varies priority casing/whitespace ("p0", " P0 ") in a
+// way that's harmless to normalize rather than reject — issue #100
+// follow-up, found live: an otherwise-valid roadmap was rejected wholesale
+// over exactly this.
+describe('validateImportPayload — priority normalization (issue #100 follow-up)', () => {
+  it('accepts a lowercase priority on a phase', () => {
+    const data = validPayload();
+    data.phases[0].priority = 'p1';
+    expect(validateImportPayload(data)).toEqual([]);
+  });
+
+  it('accepts a lowercase priority on a tuple item', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [['Tuple item', 'p0']];
+    expect(validateImportPayload(data)).toEqual([]);
+  });
+
+  it('accepts a lowercase priority on an object item', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{ title: 'Learn Docker', priority: 'p2' }];
+    expect(validateImportPayload(data)).toEqual([]);
+  });
+
+  it('accepts a priority with surrounding whitespace', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [['Tuple item', ' P0 ']];
+    expect(validateImportPayload(data)).toEqual([]);
+  });
+
+  it('still rejects a genuinely invalid priority after normalization', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{ title: 'Learn Docker', priority: 'urgent' }];
+    expect(validateImportPayload(data)).toContain('item at phases[0].sections[0].items[0] is invalid');
+  });
+});
+
 describe('validateImportPayload — item count cap', () => {
   it('accepts exactly 500 items (boundary)', () => {
     const data = {
@@ -302,22 +338,32 @@ describe('validateImportPayload — object-form items with resources (issue #100
     expect(validateImportPayload(data)).toEqual([]);
   });
 
-  it('rejects a resource with a javascript: URL', () => {
+  // URL *protocol* safety (javascript:/data: rejection) is deliberately not
+  // checked at this schema-validation layer — see importValidator.js's
+  // isValidResourceEntry() doc comment. Rejecting the whole topic here
+  // because one resource's URL was missing "https://" (a common, harmless
+  // LLM quirk) used to cascade into "item is invalid" errors across
+  // otherwise-good roadmaps (issue #100 follow-up). Protocol
+  // safety/auto-correction now happens in adaptImportToRoadmap() —
+  // schemaAdapter.test.js's "sanitizes resources" describe block covers a
+  // javascript:/data: URL actually being dropped before it ever reaches the
+  // store.
+  it('accepts a resource with a javascript: URL at the schema level (dropped later, at conversion time — see schemaAdapter.test.js)', () => {
     const data = validPayload();
     data.phases[0].sections[0].items = [{
       title: 'Learn Docker',
       resources: [{ label: 'Bad link', url: 'javascript:alert(1)' }]
     }];
-    expect(validateImportPayload(data)).toContain('item at phases[0].sections[0].items[0] is invalid');
+    expect(validateImportPayload(data)).toEqual([]);
   });
 
-  it('rejects a resource with a data: URL', () => {
+  it('accepts a resource with a bare-domain URL (missing https://) at the schema level — auto-corrected at conversion time', () => {
     const data = validPayload();
     data.phases[0].sections[0].items = [{
       title: 'Learn Docker',
-      resources: [{ label: 'Bad link', url: 'data:text/html,<script>alert(1)</script>' }]
+      resources: [{ label: 'Docker docs', url: 'docs.docker.com' }]
     }];
-    expect(validateImportPayload(data)).toContain('item at phases[0].sections[0].items[0] is invalid');
+    expect(validateImportPayload(data)).toEqual([]);
   });
 
   it('rejects a resource with an empty label', () => {

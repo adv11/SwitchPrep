@@ -418,12 +418,16 @@ a `title`/`priority ∈ {P0-P3}`/non-empty `sections` array, every section has a
 priority), a `["title","priority"]` tuple, or — since issue #100's resources support — an
 object `{ title, priority?, resources? }` (`priority` optional, inherits the phase's like
 the plain-string form; `resources` optional, up to 5 `{ label, url }` pairs, each checked
-against the same http(s)-only/length-capped rules `limits.js`'s `isValidResource` already
-enforces everywhere else a resource enters the store — a `javascript:`/`data:` URL or an
-oversized label/url makes the whole item invalid, same as a malformed title or priority).
-The total item count is ≤ 500 across all shapes — returning an array of per-field error
-strings (`phases[i].sections[j].items[k] is invalid`, etc.), empty meaning valid. On
-error, the UI shows a plain-language summary
+structurally — non-empty, length-capped label/url — but **not** for URL protocol
+correctness). Every priority value (phase, tuple item, object item) is normalized
+(`normalizePriority()`: trim + uppercase) before the `∈ {P0-P3}` check, so `"p0"`/`" P0 "`
+from an AI response are accepted rather than rejected outright. **Resource URL protocol
+safety is deliberately not checked at this validation layer** — see the "a good roadmap
+could fail validation entirely over one malformed resource URL" fix below for why; it
+moved to conversion time (`adaptImportToRoadmap()`). The total item count is ≤ 500 across
+all shapes — returning an array of per-field error strings
+(`phases[i].sections[j].items[k] is invalid`, etc.), empty meaning valid. On error, the UI
+shows a plain-language summary
 ("N things need fixing before this can be imported") plus a **"Copy fix-it message for
 your AI"** button — `buildImportFixPrompt(errors)` (`src/data/importPrompt.js`, same
 module/versioning discipline as `buildImportPrompt`, pure, no `IMPORT_PROMPT_VERSION`
@@ -434,11 +438,14 @@ collapsed by default behind a "Show technical details" toggle. Only once valid d
 `adaptImportToRoadmap()` (`src/core/roadmap/schemaAdapter.js`) — equally pure — convert
 the validated data into the exact `{ phases, items }` shape a custom roadmap needs
 (generating `phase-...`/`section-...`/`custom-...` ids the same way
-`addPhase`/`addSection`/`addItem` do; the object item form's `resources` array maps
-straight onto `item.resources` — since the resource entries already passed
-`validateImportPayload()`'s checks, an imported topic with resources renders identically
-to one whose links were added by hand through `itemPanel.js`, no separate rendering path),
-and the "Import roadmap" button (in the shared footer) enables. The validator and adapter are deliberately two separate pure modules:
+`addPhase`/`addSection`/`addItem` do; the object item form's `resources` array is
+**sanitized**, not just mapped, onto `item.resources` — `sanitizeResources()` auto-
+prepends `https://` to a bare-domain URL (`docs.docker.com` → `https://docs.docker.com`,
+a very common AI-output pattern) and drops any resource whose URL still isn't a valid
+http(s) link after that, rather than failing the whole item. Once sanitized, an imported
+topic with resources renders identically to one whose links were added by hand through
+`itemPanel.js`, no separate rendering path), and the "Import roadmap" button (in the
+shared footer) enables. The validator and adapter are deliberately two separate pure modules:
 bumping the import wire format to a future schema version means adding a new adapter
 function, never touching the validator's rules or the other way around. The modal
 resolves `{ title, phases, items } | null` — the caller (`onboarding.js`'s
@@ -449,6 +456,31 @@ calling `switchRoadmap(id)`, and `fetchTemplateData` consumes (and deletes) it i
 returning the usual empty seed for a custom id. From that point on a created roadmap is
 indistinguishable from any other custom roadmap — same Firebase path, same phase/section
 rename/delete controls, same `deleteCustomRoadmap` cleanup.
+
+**A single malformed resource URL or oddly-cased priority must never fail the whole
+roadmap (issue #100 follow-up, found via real-world testing).** Early real-world use of
+the resources feature above found roadmaps failing "item is invalid" across many
+unrelated topics, sometimes on the first *and* second generation attempt, tracing back to
+two harmless AI-output quirks that used to be treated as hard validation failures: a
+resource URL missing its `https://` scheme (`docs.docker.com` instead of
+`https://docs.docker.com` — very common, since a URL "looks complete" to a model without
+the scheme), and a priority value with different casing/whitespace (`p0`, ` P0 `). Both
+are now handled defensively instead of rejected: priorities are normalized
+(`normalizePriority()`, `importValidator.js`) before every `∈ {P0-P3}` check anywhere in
+the validator, and resource URL protocol correctness moved entirely out of validation —
+`adaptImportToRoadmap()`'s `sanitizeResources()` auto-corrects a bare-domain URL and
+silently drops (rather than fails the topic over) one that's still invalid after that.
+**One consequence worth knowing**: because URL protocol is no longer checked at
+validation time, `validateImportPayload()` alone can no longer be used as a security
+gate against a malicious resource URL — that check now only happens in
+`adaptImportToRoadmap()`, which is why `validateImportText()`'s `data` must never be
+treated as safe-to-render without going through the adapter first (already true today —
+the modal only ever calls `adaptImportToRoadmap()` on the resolved value, never renders
+`validateImportText()`'s raw `data`). A secondary, previously-unexplained symptom this
+also fixes: after several "fix it and resend" round-trips (issue #100's fix-it-message
+flow), some AI assistants gave up and stopped including resources at all in their retry —
+with roadmaps now succeeding on the first real attempt far more often, resources come
+through as originally generated instead of being silently dropped by a frustrated model.
 
 **Prompt customization inputs (issue #64 Part 2, extended in #100).** Below the topic
 field, the generate section renders six optional inputs — Experience level

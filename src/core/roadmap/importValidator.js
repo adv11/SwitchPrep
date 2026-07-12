@@ -4,19 +4,6 @@
 // version gets supported, not by editing what "valid" means here.
 import { MAX_RESOURCE_LABEL_LENGTH, MAX_RESOURCE_URL_LENGTH } from './limits.js';
 
-// Duplicated from src/ui/dom.js's isValidUrl() rather than imported — this
-// module is deliberately DOM/store/Firebase-free (see the doc comment
-// above), and ui/dom.js lives in the UI layer. Same http(s)-only check, kept
-// in sync by hand; both are tiny and unlikely to drift.
-function isHttpUrl(value = '') {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 const VALID_PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
 const MAX_ITEMS = 500;
 const MAX_RESOURCES_PER_ITEM = 5;
@@ -40,17 +27,32 @@ export function parseImportJson(rawText) {
   }
 }
 
+// LLM output is real-world-messy in small, harmless ways ("p0" instead of
+// "P0", a trailing space) that shouldn't fail an otherwise-good roadmap —
+// normalize before comparing against VALID_PRIORITIES rather than rejecting
+// on the raw value. Exported so schemaAdapter.js can apply the exact same
+// normalization when it re-reads a field this function already accepted.
+export function normalizePriority(value) {
+  return typeof value === 'string' ? value.trim().toUpperCase() : value;
+}
+
 // A resource entry mirrors the app's own { label, url } shape (limits.js's
-// isValidResource) — label required and capped, url required, capped, and
-// restricted to http(s) (never javascript:/data: — same rule as every other
-// place a URL enters the store, roadmap-store.md's "Resource URLs must be
-// validated before use").
+// isValidResource) — label required and capped, url required and capped.
+// Deliberately **not** checking the URL's protocol here — that's a save-time
+// concern (roadmap-store.md's "Resource URLs must be validated before use"
+// already applies it at both render time and save time), handled by
+// schemaAdapter.js's normalizeResourceUrl()/isHttpUrl() when the item is
+// actually converted. Rejecting a whole topic here because one resource's
+// URL was missing "https://" (a very common, harmless LLM quirk — see issue
+// #100 follow-up) was cascading into "item is invalid" errors across
+// otherwise-perfectly-good roadmaps; the adapter now auto-corrects or
+// silently drops a bad individual resource instead of failing the item.
 function isValidResourceEntry(resource) {
   return !!resource && typeof resource === 'object' && !Array.isArray(resource)
     && typeof resource.label === 'string' && resource.label.trim().length > 0
     && resource.label.length <= MAX_RESOURCE_LABEL_LENGTH
-    && typeof resource.url === 'string' && resource.url.length <= MAX_RESOURCE_URL_LENGTH
-    && isHttpUrl(resource.url);
+    && typeof resource.url === 'string' && resource.url.trim().length > 0
+    && resource.url.length <= MAX_RESOURCE_URL_LENGTH;
 }
 
 function isValidResourcesField(resources) {
@@ -63,17 +65,18 @@ function isValidResourcesField(resources) {
 // `{ title, priority?, resources? }` — the only shape that can carry
 // resource links, added in issue #100's resources support. `priority` is
 // optional on the object form (inherits the phase's priority when omitted),
-// matching the plain-string item's existing behavior.
+// matching the plain-string item's existing behavior. Priority values are
+// normalized (trim + uppercase) before the VALID_PRIORITIES check.
 function isValidItem(item) {
   if (typeof item === 'string') return item.trim().length > 0;
   if (Array.isArray(item)) {
     if (item.length !== 2) return false;
     const [title, priority] = item;
-    return typeof title === 'string' && title.trim().length > 0 && VALID_PRIORITIES.includes(priority);
+    return typeof title === 'string' && title.trim().length > 0 && VALID_PRIORITIES.includes(normalizePriority(priority));
   }
   if (item && typeof item === 'object') {
     const titleOk = typeof item.title === 'string' && item.title.trim().length > 0;
-    const priorityOk = item.priority === undefined || VALID_PRIORITIES.includes(item.priority);
+    const priorityOk = item.priority === undefined || VALID_PRIORITIES.includes(normalizePriority(item.priority));
     return titleOk && priorityOk && isValidResourcesField(item.resources);
   }
   return false;
@@ -109,7 +112,7 @@ export function validateImportPayload(data) {
     if (typeof phase.title !== 'string' || !phase.title.trim()) {
       errors.push(`phases[${i}].title is required`);
     }
-    if (!VALID_PRIORITIES.includes(phase.priority)) {
+    if (!VALID_PRIORITIES.includes(normalizePriority(phase.priority))) {
       errors.push(`phases[${i}].priority must be one of ${VALID_PRIORITIES.join(', ')}`);
     }
     if (!Array.isArray(phase.sections) || phase.sections.length === 0) {
