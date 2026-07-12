@@ -329,8 +329,8 @@ export function openCreateRoadmapModal() {
 
     importBtn.addEventListener('click', () => {
       if (!lastValidData) return;
-      const { phases, items } = adaptImportToRoadmap(lastValidData);
-      close({ title: lastValidData.title, phases, items });
+      const { phases, items, droppedResourceCount } = adaptImportToRoadmap(lastValidData);
+      close({ title: lastValidData.title, phases, items, droppedResourceCount });
     });
 
     const pasteColumn = el('div', { className: 'import-column import-column-paste' }, [

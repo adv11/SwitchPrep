@@ -481,6 +481,18 @@ also fixes: after several "fix it and resend" round-trips (issue #100's fix-it-m
 flow), some AI assistants gave up and stopped including resources at all in their retry —
 with roadmaps now succeeding on the first real attempt far more often, resources come
 through as originally generated instead of being silently dropped by a frustrated model.
+**No longer silent (issue #121 item 3):** dropping an invalid resource URL used to leave
+zero signal anywhere that it happened — a topic could end up with `resources: []` after
+import with no way to tell that from the AI simply not including any. `sanitizeResources()`
+now returns `{ resources, droppedCount }` instead of just the filtered array;
+`adaptImportToRoadmap()` sums this across every item into a top-level
+`droppedResourceCount`, threaded through `importRoadmapModal.js`'s resolved
+`{ title, phases, items, droppedResourceCount }` value to `onboarding.js`'s
+`handleCreate()`, which shows an info toast (`"Roadmap imported — N resource link(s)
+skipped (invalid URL)."`) instead of the plain success toast whenever it's nonzero. This
+only covers the "dropped-URL" half of item 3's two root causes — the other half (an item
+shape that structurally can't carry `resources` at all, e.g. a plain string or tuple item)
+is unaddressed; see issue #121 for the full investigation.
 
 **Corrupted-text detection — a real, reported data-corruption bug (issue #100 follow-up).**
 Some AI chat UIs auto-linkify raw URLs found inside a code block when a user selects and

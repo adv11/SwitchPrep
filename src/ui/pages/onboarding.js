@@ -111,9 +111,15 @@ export function renderOnboarding(app, { user, store, dailyTodoStore }) {
     picking = true;
     setBusy(true);
     try {
-      await store.createCustomRoadmap(result);
+      const { droppedResourceCount, ...roadmap } = result;
+      await store.createCustomRoadmap(roadmap);
       navigate('/app', true);
-      showToast('Roadmap imported.', 'success');
+      showToast(
+        droppedResourceCount > 0
+          ? `Roadmap imported — ${droppedResourceCount} resource link${droppedResourceCount === 1 ? '' : 's'} skipped (invalid URL).`
+          : 'Roadmap imported.',
+        droppedResourceCount > 0 ? 'info' : 'success'
+      );
     } catch (error) {
       console.error('Failed to create custom roadmap', error);
       picking = false;

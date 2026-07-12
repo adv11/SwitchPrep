@@ -1596,6 +1596,15 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .field-hint { font-size: 12px; color: var(--muted); margin-top: -4px; }
 .import-options { display: grid; gap: 14px; padding: 14px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
 .import-option-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* An implicit CSS Grid row's "auto" sizing (.import-column-scroll, the
+   parent) gives a scroll-container item (overflow-y: auto here) an
+   automatic minimum content size of 0 — per spec, a non-"visible" overflow
+   value zeroes out an item's content-based minimum size, which collapsed
+   this block to ~34px (just its padding/border) regardless of max-height,
+   the real cause of issue #121 item 5's "renders very short" report, not
+   the 260px cap alone. A definite `height` sidesteps the ambiguous
+   "auto" track-sizing algorithm entirely — the box is always exactly this
+   tall, scrolling its own overflow, rather than being derived from content. */
 .import-prompt-block {
   font-family: var(--mono);
   font-size: var(--text-sm);
@@ -1606,7 +1615,7 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 16px;
-  max-height: 260px;
+  height: 420px;
   overflow-y: auto;
   color: var(--ink);
 }
@@ -1654,6 +1663,7 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   .import-modal-grid { grid-template-columns: 45% minmax(0, 1fr); gap: 32px; }
   .import-column-build { max-height: 60vh; }
   .import-column-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+  .import-prompt-block { height: min(420px, 40vh); }
   .import-column-paste { max-height: 60vh; overflow-y: auto; padding-right: 4px; }
   .import-column-paste .import-paste-area { min-height: 260px; flex: 1; }
 }
@@ -2261,14 +2271,25 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
    animation's `onfinish` clears the inline `overflow`. */
 .phase-body-animating .section-label { position: static; }
 
-/* Custom roadmap phase/section CRUD (issue #4) */
+/* Custom roadmap phase/section CRUD (issue #4). Column layout with the
+   .field-hint caption on its own line (issue #121 item 4) — without it, the
+   rename input directly under the phase/section header reads as an
+   unlabeled duplicate title rather than an obviously-a-rename-field
+   control. */
 .phase-manage-row, .section-manage-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   padding: 10px 16px;
   background: var(--panel-2);
   border-bottom: 1px dashed var(--line);
+}
+.phase-manage-row .field-hint, .section-manage-row .field-hint { margin-top: 0; }
+.phase-manage-row-controls, .section-manage-row-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .phase-manage-row .field-input, .section-manage-row .field-input { flex: 1; }
 
