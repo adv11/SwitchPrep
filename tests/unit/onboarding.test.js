@@ -83,6 +83,55 @@ describe('onboarding page — sign-out button', () => {
     clickDialogAction('confirm');
     await vi.waitFor(() => expect(authApi.signOut).toHaveBeenCalled());
   });
+
+  // Regression, real data loss reproduced live: this button used to be the
+  // only busy-state element setBusy() forgot to disable. Clicking it while
+  // store.createCustomRoadmap()/switchRoadmap() was still in flight (e.g.
+  // mid AI-import) read a stale, pre-switch `dirty` snapshot in
+  // confirmAndSignOut() — switchRoadmap() doesn't set dirty=true until its
+  // own internal work resolves — so the flush-before-signOut fix never
+  // triggered, authApi.signOut() invalidated the auth token mid-flight, and
+  // the new roadmap's items/phases were silently never written to Firebase
+  // (only its meta/customRoadmaps entry, from the part of the switch that
+  // had already completed, survived — the roadmap "existed" but loaded
+  // empty on the next sign-in).
+  it('disables the sign-out button while createCustomRoadmap is in flight', async () => {
+    const { openCreateRoadmapModal } = await import('../../src/ui/components/importRoadmapModal.js');
+    openCreateRoadmapModal.mockResolvedValue({ title: 'My Roadmap', phases: [], items: {} });
+    const createCustomRoadmap = vi.fn(() => new Promise(() => {})); // never resolves — assert mid-flight state
+    const { app } = await setup({ createCustomRoadmap });
+
+    const signOutBtn = app.querySelector('[aria-label="Sign out"]');
+    expect(signOutBtn.disabled).toBe(false);
+
+    app.querySelector('.template-card-create .template-card-pick').click();
+    await vi.waitFor(() => expect(createCustomRoadmap).toHaveBeenCalled());
+    expect(signOutBtn.disabled).toBe(true);
+  });
+
+  it('re-enables the sign-out button if createCustomRoadmap fails', async () => {
+    const { openCreateRoadmapModal } = await import('../../src/ui/components/importRoadmapModal.js');
+    openCreateRoadmapModal.mockResolvedValue({ title: 'My Roadmap', phases: [], items: {} });
+    const createCustomRoadmap = vi.fn().mockRejectedValue(new Error('network error'));
+    const { app } = await setup({ createCustomRoadmap });
+
+    const signOutBtn = app.querySelector('[aria-label="Sign out"]');
+    app.querySelector('.template-card-create .template-card-pick').click();
+    await vi.waitFor(() => expect(createCustomRoadmap).toHaveBeenCalled());
+    await vi.waitFor(() => expect(signOutBtn.disabled).toBe(false));
+  });
+
+  it('disables the sign-out button while switchRoadmap (picking a template) is in flight', async () => {
+    const switchRoadmap = vi.fn(() => new Promise(() => {})); // never resolves — assert mid-flight state
+    const { app } = await setup({ switchRoadmap });
+
+    const signOutBtn = app.querySelector('[aria-label="Sign out"]');
+    const pianoCard = [...app.querySelectorAll('.template-card')].find(c => c.textContent.includes('Learning Piano'));
+    pianoCard.querySelector('.template-card-pick').click();
+
+    await vi.waitFor(() => expect(switchRoadmap).toHaveBeenCalled());
+    expect(signOutBtn.disabled).toBe(true);
+  });
 });
 
 describe('onboarding page — first-time picker (onboardingDone === false)', () => {

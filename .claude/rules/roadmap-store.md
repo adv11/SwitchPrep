@@ -811,6 +811,29 @@ closes/resolves `true` once the callback resolves; every pre-existing `confirmDi
 site (delete roadmap, delete account, hide template, etc.) omits it and keeps its original
 instant-close-on-click behavior unchanged.
 
+**The flush-before-sign-out fix above only helps if `dirty` is actually `true` by the time
+`confirmAndSignOut()` reads it — a second, still-reproducible way to lose a just-imported
+roadmap (found by re-testing live, over the real Firebase websocket protocol).**
+`switchRoadmap()` doesn't set `dirty = true` until its own internal `Promise.all` resolves
+and it reaches `queueSave()` — while a switch (e.g. `createCustomRoadmap()`'s AI-import
+flow) is still in flight, `store.getSnapshot().dirty` still reflects whatever it was
+*before* the switch started, often `false`. `onboarding.js`'s picker cards are correctly
+disabled for the whole duration via `setBusy()`/`picking`, but the page's own top-row
+"Sign out" button (separate from the app-shell sidebar's — see the "no sign-out affordance"
+note elsewhere in this file) was never included in that disable pass. Clicking it mid-import
+read a stale `dirty: false`, so the flush-before-`signOut()` fix never triggered — the auth
+token was invalidated while `switchRoadmap()` was still mid-flight, and the new roadmap's
+items/phases were silently never written (only its `customRoadmaps` meta entry survived,
+from the part of the switch that had already completed by then — the roadmap "existed" in
+the picker but loaded empty on the next sign-in). Fixed by wiring `signOutBtn` into
+`setBusy()` alongside the cards. **The general lesson**: any UI affordance that can trigger
+`authApi.signOut()` must be disabled for the full duration of any in-flight
+`switchRoadmap()`/`createCustomRoadmap()` call, not just the controls that obviously look
+busy — `store.getSnapshot().dirty` is a point-in-time snapshot, not a "is there pending
+work" signal, and only becomes accurate once the in-flight call has progressed far enough
+to set it. If you add another page or component with its own sign-out entry point, gate it
+on the same busy flag your page already uses for its own async store calls.
+
 **Realtime Database rules — no path other than `roadmap`/`roadmaps`/`meta`/`dailyTodos`/`activityLog`/`reports` may be written under `users/{uid}`.** `firebase/database.rules.json` has a `$other: { ".validate": "false" }` catch-all under `users/$uid` specifically to stop a buggy or malicious client from writing arbitrary data outside the known shape (still auth-scoped to that uid, just unbounded before this). If you add a genuinely new top-level field under a user's data, add an explicit `.validate` rule for it — never rely on the `$other` catch-all rejecting it silently as "good enough." Realtime Database rules cannot count a map's children, so a per-roadmap item cap is enforced client-side instead, in `roadmapStore.js`'s `addItem()` (the one place items are created) — it returns `false` instead of mutating anything once a roadmap already holds 800 non-deleted items (lowered from 1,000 in issue #53 — no real roadmap organically approaches even 800 topics); callers must check this return value and surface an error rather than assuming success. The same client-side-cap pattern applies to `dailyTodoStore.js`'s `addTodo()` (issue #56) — active (not-done, not-expired) todos are capped at `MAX_ACTIVE_TODOS` (20).
 
 **In-app feedback & bug reporting (`src/services/feedbackStore.js`, `src/core/feedback/`, `src/ui/components/feedbackWidget.js`+friends, issue #9) — a fire-and-forget write, not a fifth instance of the Store pattern above.** Every other store in this file (`roadmapStore`/`dailyTodoStore`/`activityLogStore`) is bidirectional, subscribe/notify, debounced-sync account state that has to survive offline edits and echo guards. A feedback report is the opposite shape: a user fills a form once, it either submits or it doesn't, and there's nothing to keep in sync afterward — so `feedbackStore.js` is a thin, stateless wrapper around two Firebase calls (`submitReport()`, `listenMyReports(uid, callback)`), not a `createFeedbackStore()` factory with `subscribe`/`queueSave`/a Firebase-echo guard. It imports `database` from `firebase.js` directly rather than going through `src/services/storage/` — the `StorageAdapter` interface is shaped around **one document per (uid, templateId)** with offline-first local fallback (`.claude/rules/roadmap-store.md`'s "Storage adapter abstraction" above); `reports/{reportId}` is a top-level, per-report, write-only path with no per-user local cache or offline queue, which doesn't fit that contract and isn't worth bending it for a single fire-and-forget write.

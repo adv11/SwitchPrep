@@ -93,6 +93,22 @@ and `.toast-stack` (fixed near the bottom) add `env(safe-area-inset-bottom)` to 
 `bottom` offset. Any new `position: fixed` element that touches an edge of the viewport
 needs the same treatment.
 
+**Two `position: fixed` corner elements that can both be visible at once must not share
+the same corner — a real, reported visual bug.** `.save-badge` and `.feedback-widget-trigger`
+(the latter mounted once on `document.body` for the whole app session, never unmounted —
+see `.claude/rules/roadmap-store.md`'s `feedbackWidget.js` note) were both fixed to
+`bottom: ~20-24px; right: ~20-24px`, so whenever a save event fired, the feedback button
+(higher z-index, always present) visually sat on top of — and partially hid — the save
+badge underneath it. Fixed by stacking the save badge directly above the feedback trigger
+(`.save-badge`'s `bottom` raised to clear the trigger's own bottom offset + rendered height
++ a gap) rather than moving it to the opposite corner, which isn't safe either: the
+dashboard/progress/settings app-shell sidebar (`.app-sidebar`, `position: sticky` but still
+occupying a full-height 240px column) would sit underneath a fixed bottom-left element on
+every page that has it. Before adding a new fixed-position corner element (a toast, a
+badge, a floating action button), check every other fixed corner element already on the
+pages it can appear alongside — verify visually with both potentially visible at once,
+not just each in isolation.
+
 **`.modal-overlay` uses `align-items: safe center`, not plain `center` — never change this back.** Plain `align-items: center` on an overflowing flex container (which `.modal-overlay` is, once any `.modal-card` content is taller than the viewport) clips both the top and bottom of the content equally and makes the clipped parts permanently unreachable by scrolling — a well-known flexbox+overflow trap, not a bug in any one modal's content. Found when `dailyTodoGuide.js`'s content grew long enough to push its "Got it" button below the fold on a short window, with no way to scroll to it (issue #56 follow-up). `align-items: safe center` centers when content fits and falls back to start-aligned (scrollable to both real ends) when it doesn't — combined with `overflow-y: auto` on `.modal-overlay` itself. This fixes every modal in the app that could ever grow tall (confirmDialog, item panel, guide modals), not just the one that surfaced it — if you ever add long-form modal content, you don't need a special case for it.
 
 **Brand mark is a home link on every authenticated/onboarding-adjacent page.** Clicking the "Ascent" logo/wordmark (`createBrandMark()`) always navigates somewhere predictable instead of sitting inert — `<a class="brand" href="#/signin">` on the sign-in/sign-up pages (already existed), and `<a class="brand" href="#/onboarding">` on the dashboard and onboarding pages (`src/ui/pages/dashboard.js`, `src/ui/pages/onboarding.js`), since `/onboarding` is the "all roadmaps" picker — the closest thing this app has to a home/index page. `.brand`'s CSS (`text-decoration: none; color: inherit;`) was already anchor-ready; only the wrapping element needed to change from a plain `<div>` to an `<a>`. Never make the brand mark a dead `<div>` on a page that has a sensible "home" to link to.

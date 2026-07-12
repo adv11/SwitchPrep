@@ -57,6 +57,12 @@ export function renderOnboarding(app, { user, store, dailyTodoStore }) {
   let picking = false;
   const cardEls = [];
   let createCardEl = null;
+  // Assigned below, once the button itself is built — declared up here so
+  // setBusy() (called from deep inside pickTemplate/pickCustomRoadmap/
+  // handleCreate, all defined before the button exists in the function body)
+  // can close over it. See the real, reproduced bug this guards against on
+  // signOutBtn's own definition below.
+  let signOutBtn = null;
 
   function setBusy(busy) {
     cardEls.forEach(card => {
@@ -64,6 +70,7 @@ export function renderOnboarding(app, { user, store, dailyTodoStore }) {
       card.setAttribute('aria-disabled', String(busy));
       card.querySelectorAll('button').forEach(btn => { btn.disabled = busy; });
     });
+    if (signOutBtn) signOutBtn.disabled = busy;
   }
 
   async function pickTemplate(template, cardEl) {
@@ -377,7 +384,23 @@ export function renderOnboarding(app, { user, store, dailyTodoStore }) {
   // Reuses the same confirmAndSignOut() the sidebar calls, so behavior
   // (always confirms first, message tailored to guest/dirty state) matches
   // exactly regardless of where a user signs out from.
-  const signOutBtn = el('button', {
+  //
+  // A real, reproduced data-loss bug: unlike the card buttons, this one was
+  // never included in setBusy()'s disable pass — so a user could click
+  // "Sign out" while store.switchRoadmap()/createCustomRoadmap() was still
+  // in flight (e.g. mid AI-import). confirmAndSignOut() reads
+  // store.getSnapshot().dirty to decide whether to flush before signing
+  // out, but switchRoadmap() doesn't set dirty=true until its own internal
+  // Promise.all resolves and it calls queueSave() — while the switch is
+  // still pending, dirty still reflects whatever it was *before* the switch
+  // started (often false), so the flush-before-signOut fix never triggers,
+  // authApi.signOut() invalidates the auth token mid-flight, and the new
+  // roadmap's items/phases are never written to Firebase at all (its
+  // meta/customRoadmaps entry still gets created, since that part of the
+  // switch already completed — so the roadmap "exists" but loads empty on
+  // next sign-in). Wiring this into setBusy() closes the only realistic way
+  // a user reaches that race through the UI.
+  signOutBtn = el('button', {
     type: 'button',
     className: 'btn btn-ghost btn-icon',
     'aria-label': 'Sign out',
