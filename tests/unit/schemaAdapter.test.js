@@ -118,3 +118,51 @@ describe('adaptImportToRoadmap', () => {
     Object.keys(items).forEach(id => expect(id).toMatch(/^custom-/));
   });
 });
+
+describe('adaptImportToRoadmap — object-form items with resources (issue #100)', () => {
+  it('converts an object item with no priority, inheriting the phase priority', () => {
+    const data = payload();
+    data.phases[0].sections[0].items = [{ title: 'Learn Docker' }];
+    const { items } = adaptImportToRoadmap(data);
+    const item = Object.values(items)[0];
+    expect(item).toMatchObject({ title: 'Learn Docker', priority: 'P1', resources: [] });
+  });
+
+  it('converts an object item with its own priority, not the phase\'s', () => {
+    const data = payload();
+    data.phases[0].sections[0].items = [{ title: 'Learn Docker', priority: 'P0' }];
+    const { items } = adaptImportToRoadmap(data);
+    expect(Object.values(items)[0].priority).toBe('P0');
+  });
+
+  it('maps resources onto item.resources, trimming labels', () => {
+    const data = payload();
+    data.phases[0].sections[0].items = [{
+      title: 'Learn Docker',
+      resources: [
+        { label: '  Docker docs  ', url: 'https://docs.docker.com/' },
+        { label: 'Crash course', url: 'https://www.youtube.com/watch?v=abc123' }
+      ]
+    }];
+    const { items } = adaptImportToRoadmap(data);
+    const item = Object.values(items)[0];
+    expect(item.resources).toEqual([
+      { label: 'Docker docs', url: 'https://docs.docker.com/' },
+      { label: 'Crash course', url: 'https://www.youtube.com/watch?v=abc123' }
+    ]);
+  });
+
+  it('defaults resources to an empty array when the object item omits it', () => {
+    const data = payload();
+    data.phases[0].sections[0].items = [{ title: 'Learn Docker' }];
+    const { items } = adaptImportToRoadmap(data);
+    expect(Object.values(items)[0].resources).toEqual([]);
+  });
+
+  it('trims the object item\'s title', () => {
+    const data = payload();
+    data.phases[0].sections[0].items = [{ title: '  Padded  ' }];
+    const { items } = adaptImportToRoadmap(data);
+    expect(Object.values(items)[0].title).toBe('Padded');
+  });
+});

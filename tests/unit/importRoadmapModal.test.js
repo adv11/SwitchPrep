@@ -127,6 +127,33 @@ describe('openCreateRoadmapModal — build-your-prompt column', () => {
     vi.useRealTimers();
   });
 
+  it('selecting a weekly time commitment chip updates the prompt', () => {
+    openCreateRoadmapModal();
+    const overlay = getOverlay();
+    const chip = [...overlay.querySelectorAll('.import-option-chips button')].find(b => b.textContent === '2–5 hrs/week');
+    chip.click();
+    expect(overlay.querySelector('.import-prompt-block').textContent).toContain('Weekly time commitment: 2–5 hrs/week');
+  });
+
+  it('selecting multiple "Preferred resource types" chips keeps them all active and lists them together', () => {
+    openCreateRoadmapModal();
+    const overlay = getOverlay();
+    const youtube = [...overlay.querySelectorAll('.import-option-chips button')].find(b => b.textContent === 'YouTube videos');
+    const docs = [...overlay.querySelectorAll('.import-option-chips button')].find(b => b.textContent === 'Official docs');
+
+    youtube.click();
+    docs.click();
+    expect(youtube.classList.contains('active')).toBe(true);
+    expect(docs.classList.contains('active')).toBe(true);
+    expect(overlay.querySelector('.import-prompt-block').textContent).toContain('Preferred resource types: YouTube videos, Official docs');
+
+    youtube.click();
+    expect(youtube.classList.contains('active')).toBe(false);
+    expect(docs.classList.contains('active')).toBe(true);
+    expect(overlay.querySelector('.import-prompt-block').textContent).toContain('Preferred resource types: Official docs');
+    expect(overlay.querySelector('.import-prompt-block').textContent).not.toContain('YouTube videos');
+  });
+
   it('the "Copy prompt" button copies the current prompt text via navigator.clipboard once enabled', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
@@ -143,6 +170,27 @@ describe('openCreateRoadmapModal — build-your-prompt column', () => {
     await Promise.resolve();
 
     expect(writeText).toHaveBeenCalledWith(overlay.querySelector('.import-prompt-block').textContent);
+  });
+});
+
+describe('openCreateRoadmapModal — always-visible "Copy it" step (issue #100 revamp)', () => {
+  it('the copy step (heading + button + hint) renders outside the scrollable prompt/filters area', () => {
+    openCreateRoadmapModal();
+    const overlay = getOverlay();
+    const scrollArea = overlay.querySelector('.import-column-scroll');
+    const stickyBlock = overlay.querySelector('.import-copy-sticky');
+    expect(stickyBlock).not.toBeNull();
+    expect(scrollArea.contains(stickyBlock)).toBe(false);
+    expect(stickyBlock.contains(findButton(overlay, 'Copy prompt'))).toBe(true);
+  });
+
+  it('every step heading carries a numbered badge', () => {
+    openCreateRoadmapModal();
+    const overlay = getOverlay();
+    const headings = [...overlay.querySelectorAll('.import-step-heading')];
+    expect(headings.length).toBeGreaterThanOrEqual(6);
+    const badgeNumbers = headings.map(h => h.querySelector('.import-step-badge')?.textContent);
+    expect(badgeNumbers).toEqual(['1', '2', '3', '4', '5', '6']);
   });
 });
 

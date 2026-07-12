@@ -414,10 +414,16 @@ language tag, since many AI assistants wrap their output that way despite being 
 to — issue #100) and checks it against schema version 1 (`SUPPORTED_SCHEMA_VERSION`):
 `schemaVersion === 1`, non-empty `title`, non-empty `phases` array where every phase has
 a `title`/`priority ∈ {P0-P3}`/non-empty `sections` array, every section has a
-`title`/non-empty `items` array, every item is either a plain string (inherits the
-phase's priority) or a `["title","priority"]` tuple, and the total item count is ≤ 500 —
-returning an array of per-field error strings (`phases[i].sections[j].items[k] is
-invalid`, etc.), empty meaning valid. On error, the UI shows a plain-language summary
+`title`/non-empty `items` array, every item is a plain string (inherits the phase's
+priority), a `["title","priority"]` tuple, or — since issue #100's resources support — an
+object `{ title, priority?, resources? }` (`priority` optional, inherits the phase's like
+the plain-string form; `resources` optional, up to 5 `{ label, url }` pairs, each checked
+against the same http(s)-only/length-capped rules `limits.js`'s `isValidResource` already
+enforces everywhere else a resource enters the store — a `javascript:`/`data:` URL or an
+oversized label/url makes the whole item invalid, same as a malformed title or priority).
+The total item count is ≤ 500 across all shapes — returning an array of per-field error
+strings (`phases[i].sections[j].items[k] is invalid`, etc.), empty meaning valid. On
+error, the UI shows a plain-language summary
 ("N things need fixing before this can be imported") plus a **"Copy fix-it message for
 your AI"** button — `buildImportFixPrompt(errors)` (`src/data/importPrompt.js`, same
 module/versioning discipline as `buildImportPrompt`, pure, no `IMPORT_PROMPT_VERSION`
@@ -428,8 +434,11 @@ collapsed by default behind a "Show technical details" toggle. Only once valid d
 `adaptImportToRoadmap()` (`src/core/roadmap/schemaAdapter.js`) — equally pure — convert
 the validated data into the exact `{ phases, items }` shape a custom roadmap needs
 (generating `phase-...`/`section-...`/`custom-...` ids the same way
-`addPhase`/`addSection`/`addItem` do), and the "Import roadmap" button (in the shared
-footer) enables. The validator and adapter are deliberately two separate pure modules:
+`addPhase`/`addSection`/`addItem` do; the object item form's `resources` array maps
+straight onto `item.resources` — since the resource entries already passed
+`validateImportPayload()`'s checks, an imported topic with resources renders identically
+to one whose links were added by hand through `itemPanel.js`, no separate rendering path),
+and the "Import roadmap" button (in the shared footer) enables. The validator and adapter are deliberately two separate pure modules:
 bumping the import wire format to a future schema version means adding a new adapter
 function, never touching the validator's rules or the other way around. The modal
 resolves `{ title, phases, items } | null` — the caller (`onboarding.js`'s
@@ -441,21 +450,29 @@ returning the usual empty seed for a custom id. From that point on a created roa
 indistinguishable from any other custom roadmap — same Firebase path, same phase/section
 rename/delete controls, same `deleteCustomRoadmap` cleanup.
 
-**Prompt customization inputs (issue #64 Part 2).** Below the topic field, the generate
-section renders four optional inputs — Experience level (Beginner/Intermediate/Advanced,
-a chip group reusing `.filter-chip` styling), Target timeframe (No deadline/1 month/
-3 months/6 months/1 year, the same chip pattern), Goal/context (a `<select>`: Interview
-prep/On-the-job upskilling/Academic or exam prep/Personal project or hobby), and a
-freeform "Already know" text input — each feeding `buildImportPrompt(topic, options)`'s
-`options` param. Every field is optional (topic remains the only required input) and
-each appends exactly one line to the prompt's free-text instructions block when set
-(`Experience level: …`, etc.), omitted entirely when unset/blank — never an empty or
-placeholder line, matching how the topic line's own placeholder already worked. This is
-deliberately additive to the *instructions*, never the JSON schema contract above them
-in `importPrompt.js` — `importValidator.js`/`schemaAdapter.js` needed zero changes, and
-this required no `IMPORT_PROMPT_VERSION` bump, so a prompt copied before this existed
-still parses identically today. If you add a fifth customization field, follow the same
-pattern: one optional input, one omitted-when-unset line in `buildOptionLines()`
+**Prompt customization inputs (issue #64 Part 2, extended in #100).** Below the topic
+field, the generate section renders six optional inputs — Experience level
+(Beginner/Intermediate/Advanced, a chip group reusing `.filter-chip` styling), Target
+timeframe (No deadline/1 month/3 months/6 months/1 year, the same chip pattern), Weekly
+time commitment (issue #100: `< 2 hrs/week` … `10+ hrs/week`, same single-select chip
+pattern), Goal/context (a `<select>`: Interview prep/On-the-job upskilling/Academic or
+exam prep/Personal project or hobby), Preferred resource types (issue #100: YouTube
+videos/Articles & blogs/Official docs/Online courses — the one **multi**-select field
+among these six, `buildMultiChipGroup()` in `importRoadmapModal.js` rather than
+`buildChipGroup()`, since a user may want more than one kind of link), and a freeform
+"Already know" text input — each feeding `buildImportPrompt(topic, options)`'s `options`
+param. Every field is optional (topic remains the only required input) and each appends
+exactly one line to the prompt's free-text instructions block when set (`Experience
+level: …`, `Preferred resource types: …` as a comma-joined list, etc.), omitted entirely
+when unset/blank/empty-array — never an empty or placeholder line, matching how the
+topic line's own placeholder already worked. This is deliberately additive to the
+*instructions*, never the JSON schema contract above them in `importPrompt.js` (the
+schema block's own resources-support addition, above, is a separate, structural change to
+the contract, not a `buildOptionLines()` instruction line) — `importValidator.js`
+/`schemaAdapter.js` needed zero changes for these six option fields, and none of them
+required an `IMPORT_PROMPT_VERSION` bump, so a prompt copied before any of them existed
+still parses identically today. If you add a seventh customization field, follow the
+same pattern: one optional input, one omitted-when-unset line in `buildOptionLines()`
 (`src/data/importPrompt.js`), never a change to the schema block itself.
 
 **Flush-before-switch — an edit made just before switching must never be silently

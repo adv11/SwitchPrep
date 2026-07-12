@@ -20,6 +20,34 @@ function validImportJson() {
   });
 }
 
+function importJsonWithResources() {
+  return JSON.stringify({
+    schemaVersion: 1,
+    title: 'Roadmap With Resources',
+    phases: [
+      {
+        title: 'Phase One',
+        priority: 'P1',
+        sections: [
+          {
+            title: 'Section One',
+            items: [
+              {
+                title: 'Learn Docker',
+                priority: 'P0',
+                resources: [
+                  { label: 'Docker official docs', url: 'https://docs.docker.com/' },
+                  { label: 'Docker crash course', url: 'https://www.youtube.com/watch?v=abc123' }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  });
+}
+
 async function openCreateModal(page) {
   await page.goto('/#/signin');
   await page.click('text=Continue as guest');
@@ -117,6 +145,27 @@ test.describe('AI-assisted roadmap creation — two-column layout (issue #100)',
     await expect(page.locator('.check-item')).toHaveCount(2);
     await expect(page.locator('.check-item', { hasText: 'Topic A' })).toBeVisible();
     await expect(page.locator('.check-item', { hasText: 'Topic B' })).toBeVisible();
+  });
+
+  test('"Copy prompt" is visible without scrolling the build column, even before any filters are touched', async ({ page }) => {
+    test.skip(!FIREBASE_CONFIGURED, 'Requires FIREBASE_CONFIGURED env var — see issue #37');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const modal = await openCreateModal(page);
+    await expect(modal.locator('button', { hasText: 'Copy prompt' })).toBeInViewport();
+  });
+
+  test('importing a roadmap whose items carry resources renders them on the dashboard checklist', async ({ page }) => {
+    test.skip(!FIREBASE_CONFIGURED, 'Requires FIREBASE_CONFIGURED env var — see issue #37');
+    const modal = await openCreateModal(page);
+
+    await modal.locator('.import-paste-area').fill(importJsonWithResources());
+    await expect(modal.locator('.form-message.success')).toContainText('1 topic found');
+    await modal.locator('button', { hasText: 'Import roadmap' }).click();
+
+    await expect(page).toHaveURL(/#\/app/, { timeout: 10_000 });
+    const row = page.locator('.check-item', { hasText: 'Learn Docker' });
+    await expect(row).toBeVisible();
+    await expect(row.locator('[data-action="resources"]')).toContainText('2');
   });
 
   test('pasting a fenced-code-block-wrapped payload still imports successfully', async ({ page }) => {

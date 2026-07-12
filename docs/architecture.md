@@ -3020,3 +3020,55 @@ See `.claude/rules/roadmap-store.md`'s "Manual 'start truly blank' roadmap creat
 retired" and "AI-assisted roadmap creation" sections, and `.claude/rules/ui-styling.md`'s
 "A two-column modal with a shared header/footer outside the grid" section, for the full
 writeup.
+
+### 2026-07-12 — PR TBD — Creation-modal revamp: resource links, more filters, always-visible Copy step, redesigned card (issue #100 follow-up)
+
+Live feedback on the just-shipped two-column modal (previous entry) drove a second pass,
+no new files added — pure follow-up to the same components. Four pieces:
+
+1. **Readability + layout fix.** `.import-prompt-block`'s font size went from 12px to the
+   app's `--text-sm` token (13px). More substantially, the "Copy it" step (heading, Copy
+   prompt button, hint text) used to live inside the same scrollable area as the topic
+   field and customization filters — on a shorter window it could be scrolled out of view
+   entirely, unreachable on first open without knowing to scroll. Fixed by restructuring
+   `.import-column-build` into a flex column with a scrollable `.import-column-scroll`
+   child (`flex: 1; min-height: 0; overflow-y: auto`) and a sibling `.import-copy-sticky`
+   block that sits outside the scrolling area in normal flow — not `position: sticky`,
+   which would need its own containing-block reasoning; a plain flex sibling is simpler
+   and just as effective. See `.claude/rules/ui-styling.md`'s new "sticky-by-layout"
+   section for the reusable pattern.
+2. **Numbered step badges + entrance animation.** Each of the six build/paste steps
+   (`buildStepHeading()`, `importRoadmapModal.js`) now renders a small circular numbered
+   badge (`.import-step-badge`) instead of plain "1. …" text, with a short staggered
+   fade-in (`.import-step-heading.entering`/`.entering-delay-N`, reusing the existing
+   `item-entering` keyframes and `--stagger-base` token `.check-item` already
+   established — no new keyframes needed).
+3. **Two more optional filters.** "Weekly time commitment" (single-select chips) and
+   "Preferred resource types" (the first **multi**-select field in this modal —
+   `buildMultiChipGroup()`, a new sibling to the existing `buildChipGroup()`) join the
+   existing four, each appending one line to `buildImportPrompt()`'s instructions block
+   exactly like the others — no schema change, no `IMPORT_PROMPT_VERSION` bump.
+4. **Resource links in the generated schema.** The real substantive addition: the import
+   JSON schema now accepts a third item shape — `{ title, priority?, resources? }` —
+   alongside the existing plain-string and tuple forms, where `resources` is an array of
+   up to 5 `{ label, url }` pairs. `buildImportPrompt()` instructs the AI to include real,
+   working links (YouTube, official docs, articles/blogs, courses) and never fabricate a
+   URL. `validateImportPayload()` (`src/core/roadmap/importValidator.js`) validates each
+   resource against the same rules `limits.js`'s `isValidResource` already enforces
+   everywhere else a resource enters the store (label/url length caps, http(s)-only URL —
+   a local `isHttpUrl()` duplicate of `src/ui/dom.js`'s `isValidUrl()`, kept as a
+   duplicate rather than a cross-layer import so this module stays DOM-free).
+   `adaptImportToRoadmap()` maps validated resources straight onto `item.resources`, so an
+   AI-generated topic with resources renders identically to one whose links were added by
+   hand — the existing resource-count badge/type-icon/"Open" link in `dashboard.js`/
+   `itemPanel.js` needed zero changes.
+5. **Card redesign.** `.template-card-create` (the "Create your own roadmap" card) went
+   from a plain dashed-border box to a brand-tinted background/border/glow plus a new
+   "AI-powered" pill (`.template-card-ai-badge`) — real feedback called the old version
+   easy to miss among the built-in template cards. Every value used is an existing
+   theme-aware token (`--brand-light`/`--brand-light-border`/`--shadow-brand`), no new
+   color literals.
+
+See `.claude/rules/roadmap-store.md`'s updated "AI-assisted roadmap creation" and "Prompt
+customization inputs" sections, and `.claude/rules/ui-styling.md`'s new "sticky-by-layout"
+section, for the full writeup.

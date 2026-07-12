@@ -259,6 +259,117 @@ describe('validateImportPayload — item count cap', () => {
   });
 });
 
+describe('validateImportPayload — object-form items with resources (issue #100)', () => {
+  it('accepts an object item with title only (inherits phase priority)', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{ title: 'Learn Docker' }];
+    expect(validateImportPayload(data)).toEqual([]);
+  });
+
+  it('accepts an object item with its own priority', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{ title: 'Learn Docker', priority: 'P0' }];
+    expect(validateImportPayload(data)).toEqual([]);
+  });
+
+  it('rejects an object item with an invalid priority', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{ title: 'Learn Docker', priority: 'URGENT' }];
+    expect(validateImportPayload(data)).toContain('item at phases[0].sections[0].items[0] is invalid');
+  });
+
+  it('rejects an object item with an empty title', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{ title: '   ' }];
+    expect(validateImportPayload(data)).toContain('item at phases[0].sections[0].items[0] is invalid');
+  });
+
+  it('accepts an object item with valid http(s) resources', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{
+      title: 'Learn Docker',
+      resources: [
+        { label: 'Docker official docs', url: 'https://docs.docker.com/' },
+        { label: 'Docker crash course', url: 'https://www.youtube.com/watch?v=abc123' }
+      ]
+    }];
+    expect(validateImportPayload(data)).toEqual([]);
+  });
+
+  it('accepts an object item with no resources field at all (optional)', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{ title: 'Learn Docker' }];
+    expect(validateImportPayload(data)).toEqual([]);
+  });
+
+  it('rejects a resource with a javascript: URL', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{
+      title: 'Learn Docker',
+      resources: [{ label: 'Bad link', url: 'javascript:alert(1)' }]
+    }];
+    expect(validateImportPayload(data)).toContain('item at phases[0].sections[0].items[0] is invalid');
+  });
+
+  it('rejects a resource with a data: URL', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{
+      title: 'Learn Docker',
+      resources: [{ label: 'Bad link', url: 'data:text/html,<script>alert(1)</script>' }]
+    }];
+    expect(validateImportPayload(data)).toContain('item at phases[0].sections[0].items[0] is invalid');
+  });
+
+  it('rejects a resource with an empty label', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{
+      title: 'Learn Docker',
+      resources: [{ label: '  ', url: 'https://docs.docker.com/' }]
+    }];
+    expect(validateImportPayload(data)).toContain('item at phases[0].sections[0].items[0] is invalid');
+  });
+
+  it('rejects a resource with an oversized label or url', () => {
+    const dataLabel = validPayload();
+    dataLabel.phases[0].sections[0].items = [{
+      title: 'Learn Docker',
+      resources: [{ label: 'x'.repeat(121), url: 'https://docs.docker.com/' }]
+    }];
+    expect(validateImportPayload(dataLabel)).toContain('item at phases[0].sections[0].items[0] is invalid');
+
+    const dataUrl = validPayload();
+    dataUrl.phases[0].sections[0].items = [{
+      title: 'Learn Docker',
+      resources: [{ label: 'Docs', url: `https://docs.docker.com/${'x'.repeat(2048)}` }]
+    }];
+    expect(validateImportPayload(dataUrl)).toContain('item at phases[0].sections[0].items[0] is invalid');
+  });
+
+  it('rejects more than 5 resources on a single item', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{
+      title: 'Learn Docker',
+      resources: Array.from({ length: 6 }, (_, i) => ({ label: `Link ${i}`, url: `https://example.com/${i}` }))
+    }];
+    expect(validateImportPayload(data)).toContain('item at phases[0].sections[0].items[0] is invalid');
+  });
+
+  it('accepts exactly 5 resources on a single item (boundary)', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{
+      title: 'Learn Docker',
+      resources: Array.from({ length: 5 }, (_, i) => ({ label: `Link ${i}`, url: `https://example.com/${i}` }))
+    }];
+    expect(validateImportPayload(data)).toEqual([]);
+  });
+
+  it('rejects a non-array resources field', () => {
+    const data = validPayload();
+    data.phases[0].sections[0].items = [{ title: 'Learn Docker', resources: 'not an array' }];
+    expect(validateImportPayload(data)).toContain('item at phases[0].sections[0].items[0] is invalid');
+  });
+});
+
 describe('validateImportText', () => {
   it('returns valid: true with parsed data for a valid JSON string', () => {
     const result = validateImportText(JSON.stringify(validPayload()));

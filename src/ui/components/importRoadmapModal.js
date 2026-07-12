@@ -7,6 +7,8 @@ import { adaptImportToRoadmap } from '../../core/roadmap/schemaAdapter.js';
 const EXPERIENCE_LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
 const TIMEFRAMES = ['No deadline', '1 month', '3 months', '6 months', '1 year'];
 const GOALS = ['Interview prep', 'On-the-job upskilling', 'Academic or exam prep', 'Personal project or hobby'];
+const WEEKLY_TIME_OPTIONS = ['< 2 hrs/week', '2–5 hrs/week', '5–10 hrs/week', '10+ hrs/week'];
+const RESOURCE_TYPES = ['YouTube videos', 'Articles & blogs', 'Official docs', 'Online courses'];
 
 function countItems(data) {
   return data.phases.reduce((total, phase) => (
@@ -51,6 +53,40 @@ function buildChipGroup(values, getValue, onChange) {
   return el('div', { className: 'import-option-chips' }, buttons);
 }
 
+// Same chip visuals as buildChipGroup(), but any number of chips can be
+// active at once — used for "Preferred resource types" (issue #100 revamp),
+// where a user may want more than one kind of link.
+function buildMultiChipGroup(values, getValues, onChange) {
+  const buttons = values.map(value => {
+    const btn = el('button', {
+      type: 'button',
+      className: `filter-chip ${getValues().includes(value) ? 'active' : ''}`,
+      text: value
+    });
+    btn.addEventListener('click', () => {
+      const current = getValues();
+      const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
+      onChange(next);
+      btn.classList.toggle('active', next.includes(value));
+    });
+    return btn;
+  });
+  return el('div', { className: 'import-option-chips' }, buttons);
+}
+
+// A small circular numbered badge + label, used as each build/paste step's
+// heading (issue #100 revamp) — replaces the earlier plain "1. ..." text so
+// the sequence reads as a clear set of steps rather than a wall of
+// sub-headings. `.entering-delay-N` (app.css, root CLAUDE.md's "Never set an
+// inline style attribute" rule) staggers each step's entrance instead of an
+// inline animation-delay.
+function buildStepHeading(number, text, delayIndex = 0) {
+  return el('h3', { className: `import-step-heading entering entering-delay-${Math.min(delayIndex, 6)}` }, [
+    el('span', { className: 'import-step-badge', text: String(number) }),
+    el('span', { text })
+  ]);
+}
+
 // "Create your own roadmap" (issue #100 — supersedes issues #4/#64, which
 // this redesign fully replaces). Manual "start truly blank" creation was
 // retired (see roadmap-store.md) — this AI-assisted flow is now the only way
@@ -81,6 +117,8 @@ export function openCreateRoadmapModal() {
     let experienceLevel = '';
     let timeframe = '';
     let goal = '';
+    let weeklyTime = '';
+    let resourceTypes = [];
     const alreadyKnowInput = el('input', {
       className: 'field-input',
       type: 'text',
@@ -88,7 +126,7 @@ export function openCreateRoadmapModal() {
     });
 
     const promptBlock = el('pre', { className: 'import-prompt-block' });
-    const copyBtn = el('button', { type: 'button', className: 'btn btn-secondary btn-sm', text: 'Copy prompt' });
+    const copyBtn = el('button', { type: 'button', className: 'btn btn-primary btn-block', text: 'Copy prompt' });
     const copyHint = el('p', { className: 'import-copy-hint', text: 'Tell us what this roadmap should cover first.' });
 
     function refreshCopyState() {
@@ -102,6 +140,8 @@ export function openCreateRoadmapModal() {
         experienceLevel,
         timeframe,
         goal,
+        weeklyTime,
+        resourceTypes,
         alreadyKnow: alreadyKnowInput.value
       });
       refreshCopyState();
@@ -116,6 +156,14 @@ export function openCreateRoadmapModal() {
     });
     const timeframeChips = buildChipGroup(TIMEFRAMES, () => timeframe, value => {
       timeframe = value;
+      refreshPrompt();
+    });
+    const weeklyTimeChips = buildChipGroup(WEEKLY_TIME_OPTIONS, () => weeklyTime, value => {
+      weeklyTime = value;
+      refreshPrompt();
+    });
+    const resourceTypeChips = buildMultiChipGroup(RESOURCE_TYPES, () => resourceTypes, values => {
+      resourceTypes = values;
       refreshPrompt();
     });
     const goalSelect = el('select', { className: 'field-input' }, [
@@ -142,10 +190,24 @@ export function openCreateRoadmapModal() {
       copyResetTimer = setTimeout(() => { copyBtn.textContent = 'Copy prompt'; }, 1800);
     });
 
-    const buildColumn = el('div', { className: 'import-column import-column-build' }, [
-      el('h3', { className: 'import-step-heading', text: '1. What should this roadmap cover?' }),
+    // The "Copy it" step (heading + button + hint) is a dedicated
+    // .import-copy-sticky block pinned to the bottom of the scrollable build
+    // column (app.css) so it's visible the moment the modal opens, without
+    // scrolling past the customization filters first — the exact "under the
+    // scrollable, not visible on first open" gap reported after the initial
+    // two-column redesign shipped. The column keeps scrolling normally above
+    // it; only this one block stays put.
+    const copyStickyBlock = el('div', { className: 'import-copy-sticky' }, [
+      buildStepHeading(4, 'Copy it', 3),
+      copyBtn,
+      copyHint,
+      el('p', { className: 'import-copy-instructions', text: 'Paste this into ChatGPT, Claude, Gemini, or any AI chat assistant.' })
+    ]);
+
+    const buildScrollArea = el('div', { className: 'import-column-scroll' }, [
+      buildStepHeading(1, 'What should this roadmap cover?', 0),
       el('label', { className: 'field' }, [topicInput]),
-      el('h3', { className: 'import-step-heading', text: '2. Customize it (optional)' }),
+      buildStepHeading(2, 'Customize it (optional)', 1),
       el('div', { className: 'import-options' }, [
         el('label', { className: 'field' }, [
           el('span', { className: 'field-label', text: 'Experience level' }),
@@ -158,9 +220,19 @@ export function openCreateRoadmapModal() {
           timeframeChips
         ]),
         el('label', { className: 'field' }, [
+          el('span', { className: 'field-label', text: 'Weekly time commitment' }),
+          el('span', { className: 'field-hint', text: 'How many hours a week can you realistically give this?' }),
+          weeklyTimeChips
+        ]),
+        el('label', { className: 'field' }, [
           el('span', { className: 'field-label', text: 'Goal / context' }),
           el('span', { className: 'field-hint', text: 'What are you using this roadmap for?' }),
           goalSelect
+        ]),
+        el('label', { className: 'field' }, [
+          el('span', { className: 'field-label', text: 'Preferred resource types' }),
+          el('span', { className: 'field-hint', text: 'What kinds of links should the AI include, if any? Pick as many as you like.' }),
+          resourceTypeChips
         ]),
         el('label', { className: 'field' }, [
           el('span', { className: 'field-label', text: 'Already know' }),
@@ -168,12 +240,13 @@ export function openCreateRoadmapModal() {
           alreadyKnowInput
         ])
       ]),
-      el('h3', { className: 'import-step-heading', text: '3. Your prompt' }),
-      promptBlock,
-      el('h3', { className: 'import-step-heading', text: '4. Copy it' }),
-      copyBtn,
-      copyHint,
-      el('p', { className: 'import-copy-instructions', text: 'Paste this into ChatGPT, Claude, Gemini, or any AI chat assistant.' })
+      buildStepHeading(3, 'Your prompt', 2),
+      promptBlock
+    ]);
+
+    const buildColumn = el('div', { className: 'import-column import-column-build' }, [
+      buildScrollArea,
+      copyStickyBlock
     ]);
 
     // --- Right column: paste the AI's answer ---
@@ -259,9 +332,9 @@ export function openCreateRoadmapModal() {
     });
 
     const pasteColumn = el('div', { className: 'import-column import-column-paste' }, [
-      el('h3', { className: 'import-step-heading', text: '5. Paste the AI\'s answer' }),
+      buildStepHeading(5, "Paste the AI's answer", 4),
       el('label', { className: 'field' }, [pasteArea]),
-      el('h3', { className: 'import-step-heading', text: '6. Fix any issues' }),
+      buildStepHeading(6, 'Fix any issues', 5),
       summaryMsg,
       technicalToggle,
       errorList,

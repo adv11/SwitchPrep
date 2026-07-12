@@ -867,15 +867,37 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 }
 .template-card-hidden .btn { margin-top: auto; align-self: flex-start; }
 
+/* Issue #100 revamp — the plain dashed-border box read as an inert
+   placeholder rather than the primary "start something new" action it is
+   (real user feedback: "I don't think it is good we need to remake this").
+   A solid brand-tinted background + border + glow (--brand-light/--brand/
+   --shadow-brand, all already theme-aware tokens) plus a small "AI-powered"
+   pill make it the visually loudest card in the grid without introducing any
+   new color literal — everything here is an existing token. */
 .template-card-create {
   align-items: center;
   justify-content: center;
   text-align: center;
-  border-style: dashed;
   gap: 6px;
+  background: var(--brand-light);
+  border: 1.5px solid var(--brand-light-border);
+  box-shadow: var(--shadow-brand);
 }
+.template-card-create:hover, .template-card-create:has(.template-card-pick:focus-visible) { border-color: var(--brand); }
 .template-card-create .template-card-icon { color: var(--brand); }
 .template-card-create .template-card-name { color: var(--brand-dark); }
+.template-card-ai-badge {
+  align-self: center;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-dark);
+  background: var(--panel);
+  border: 1px solid var(--brand-light-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
 
 /* Dashboard */
 .dashboard { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
@@ -1396,25 +1418,61 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
    below is gated on that tier, not the content itself. */
 .import-modal-card { max-width: 1040px; display: grid; gap: 16px; max-height: 88vh; overflow-y: auto; }
 .import-modal-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
-.import-column { display: grid; gap: 12px; align-content: start; min-width: 0; }
-.import-step-heading { font-size: var(--text-sm); font-weight: 800; color: var(--ink); margin: 8px 0 0; }
+.import-column { min-width: 0; }
+.import-column-paste { display: grid; gap: 12px; align-content: start; }
+/* The build column is a flex column, not a plain scrolling block — the
+   "Copy it" step (`.import-copy-sticky`) is a sibling of the scrollable
+   `.import-column-scroll`, not a descendant of it, so it always renders in
+   its own natural space below whatever height the scroll area is given,
+   instead of requiring a scroll to reach it. This is what fixes "the prompt
+   and Copy button are under the scrollable, not visible on first open"
+   without removing the scroll itself — the topic/filters area still scrolls
+   independently, the copy step never does. */
+.import-column-build { display: flex; flex-direction: column; min-width: 0; }
+.import-column-scroll { display: grid; gap: 14px; align-content: start; }
+.import-step-heading { display: flex; align-items: center; gap: 10px; font-size: var(--text-sm); font-weight: 800; color: var(--ink); margin: 6px 0 0; }
 .import-step-heading:first-child { margin-top: 0; }
+.import-step-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
 .field-hint { font-size: 12px; color: var(--muted); margin-top: -4px; }
-.import-options { display: grid; gap: 12px; padding: 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
+.import-options { display: grid; gap: 14px; padding: 14px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
 .import-option-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .import-prompt-block {
   font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--text-sm);
+  line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: 16px;
   max-height: 260px;
   overflow-y: auto;
   color: var(--ink);
+}
+/* Always visible the instant the modal opens — see the .import-column-build
+   comment above. A top border + panel background give it a subtle "this is
+   a fixed footer, not just more scrolling content" cue even though it isn't
+   position: fixed/sticky. */
+.import-copy-sticky {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
 }
 .import-copy-hint { font-size: 12px; color: var(--muted); margin: 0; }
 .import-copy-instructions { font-size: 12px; color: var(--muted); margin: 0; }
@@ -1446,7 +1504,9 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
    requirement. */
 @media (min-width: 1025px) {
   .import-modal-grid { grid-template-columns: 45% minmax(0, 1fr); gap: 32px; }
-  .import-column { max-height: 60vh; overflow-y: auto; padding-right: 4px; }
+  .import-column-build { max-height: 60vh; }
+  .import-column-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+  .import-column-paste { max-height: 60vh; overflow-y: auto; padding-right: 4px; }
   .import-column-paste .import-paste-area { min-height: 260px; flex: 1; }
 }
 
@@ -2117,6 +2177,22 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .check-item.entering-delay-6 { animation-delay: calc(var(--stagger-base) * 6); }
 @media (prefers-reduced-motion: reduce) {
   .check-item.entering { animation: none; }
+}
+
+/* Same item-entering keyframes/stagger token reused for the "Create your own
+   roadmap" modal's numbered step headings (issue #100 revamp) — a short,
+   staggered fade-in so the six steps read as a guided sequence instead of
+   all snapping in at once. */
+.import-step-heading.entering { animation: item-entering var(--duration-base) var(--ease-out) both; }
+.import-step-heading.entering-delay-0 { animation-delay: 0ms; }
+.import-step-heading.entering-delay-1 { animation-delay: calc(var(--stagger-base) * 1); }
+.import-step-heading.entering-delay-2 { animation-delay: calc(var(--stagger-base) * 2); }
+.import-step-heading.entering-delay-3 { animation-delay: calc(var(--stagger-base) * 3); }
+.import-step-heading.entering-delay-4 { animation-delay: calc(var(--stagger-base) * 4); }
+.import-step-heading.entering-delay-5 { animation-delay: calc(var(--stagger-base) * 5); }
+.import-step-heading.entering-delay-6 { animation-delay: calc(var(--stagger-base) * 6); }
+@media (prefers-reduced-motion: reduce) {
+  .import-step-heading.entering { animation: none; }
 }
 
 .check-box {

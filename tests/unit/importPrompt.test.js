@@ -68,6 +68,46 @@ describe('buildImportPrompt', () => {
     expect(prompt).toContain('"schemaVersion": 1');
     expect(prompt).toContain('Do not add any fields beyond those listed above.');
   });
+
+  it('renders weekly time commitment alone', () => {
+    const prompt = buildImportPrompt('Rust', { weeklyTime: '2–5 hrs/week' });
+    expect(prompt).toContain('Weekly time commitment: 2–5 hrs/week');
+  });
+
+  it('renders preferred resource types as a joined list, omits when empty', () => {
+    const prompt = buildImportPrompt('Rust', { resourceTypes: ['YouTube videos', 'Official docs'] });
+    expect(prompt).toContain('Preferred resource types: YouTube videos, Official docs');
+
+    expect(buildImportPrompt('Rust', { resourceTypes: [] })).not.toContain('Preferred resource types:');
+    expect(buildImportPrompt('Rust', {})).not.toContain('Preferred resource types:');
+  });
+
+  it('always documents the resources-carrying object item shape and its rules, regardless of options', () => {
+    const prompt = buildImportPrompt('Rust');
+    expect(prompt).toContain('"resources"');
+    expect(prompt).toContain('up to 5 real, working links per item');
+    expect(prompt).toContain('never invent a URL');
+  });
+
+  it('renders all six fields together, each on its own line, in a stable order', () => {
+    const prompt = buildImportPrompt('Rust', {
+      experienceLevel: 'Advanced',
+      timeframe: '1 year',
+      goal: 'Academic or exam prep',
+      weeklyTime: '10+ hrs/week',
+      resourceTypes: ['Online courses'],
+      alreadyKnow: 'basic syntax'
+    });
+    const lines = prompt.trim().split('\n').slice(-6);
+    expect(lines).toEqual([
+      'Experience level: Advanced',
+      'Target timeframe: 1 year',
+      'Goal / context: Academic or exam prep',
+      'Weekly time commitment: 10+ hrs/week',
+      'Preferred resource types: Online courses',
+      'Already know: basic syntax'
+    ]);
+  });
 });
 
 describe('buildImportFixPrompt', () => {

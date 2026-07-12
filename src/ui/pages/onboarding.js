@@ -135,6 +135,7 @@ export function renderOnboarding(app, { user, store, dailyTodoStore }) {
       onClick: handleCreate
     }, [
       el('span', { className: 'template-card-icon' }, [createIcon('plus', { size: 'lg' })]),
+      el('span', { className: 'template-card-ai-badge', text: 'AI-powered' }),
       el('span', { className: 'template-card-name', text: 'Create your own roadmap' }),
       el('span', { className: 'template-card-desc', text: 'Answer a few questions, generate it with an AI assistant, and paste the result back in.' })
     ]);
