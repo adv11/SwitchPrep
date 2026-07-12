@@ -1,6 +1,7 @@
 import { el, isValidUrl } from '../dom.js';
 import { confirmDialog } from './confirmDialog.js';
 import { createIcon } from './icons.js';
+import { createDecorativeIcon } from './decorativeIcon.js';
 import { MAX_TITLE_LENGTH, MAX_RESOURCE_LABEL_LENGTH, MAX_RESOURCE_URL_LENGTH } from '../../core/roadmap/limits.js';
 import { detectLinkType, LINK_TYPE_META } from '../utils/linkDetector.js';
 
@@ -102,7 +103,10 @@ export function openItemPanel({ item, onSave, onDelete, onClose, focusField }) {
 
       const row = el('div', { className: 'resource-card' }, [
         el('div', { className: 'resource-card-header' }, [
-          el('span', { className: `link-badge ${meta.badgeClass}`, text: `${meta.icon} ${meta.label}` })
+          el('span', { className: `link-badge ${meta.badgeClass}` }, [
+            el('span', { className: 'link-badge-icon', 'aria-hidden': 'true' }, [createDecorativeIcon(meta.icon, { size: 'xs' })]),
+            meta.label
+          ])
         ]),
         el('div', { className: 'resource-meta' }, [
           el('input', {
