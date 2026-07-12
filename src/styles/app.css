@@ -470,6 +470,10 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .form-message { min-height: 20px; font-size: var(--text-sm); font-weight: 600; color: var(--muted); }
 .form-message.error { color: var(--danger); }
 .form-message.success { color: var(--brand-dark); }
+/* Issue #121 item 1 — deliberately not .form-message.error: a Playwright
+   locator scoped to that class needs to match exactly one element
+   (summaryMsg's "N things need fixing" line), never this callout too. */
+.import-corruption-hint { font-size: var(--text-sm); font-weight: 600; color: var(--danger); margin: 0; }
 .form-error { color: var(--danger); font-size: 12px; font-weight: 600; min-height: 18px; }
 .field-error { color: var(--danger); font-size: 12px; font-weight: 600; min-height: 16px; }
 
@@ -1177,7 +1181,20 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
    `left`/`right`/`top`/`bottom` from the trigger's `getBoundingClientRect()`
    at open time instead of leaning on static CSS offsets. z-index raised to
    sit above the mobile sidebar drawer (200) and its backdrop (199), since a
-   fixed-position menu can now be triggered from inside that drawer too. */
+   fixed-position menu can now be triggered from inside that drawer too.
+   Issue #121 follow-up: `position: fixed` is *positioned* relative to the
+   viewport only as long as no ancestor between it and the root has a
+   transform/filter/etc. — but it also *stacks* (z-index paint order) within
+   whatever stacking context its containing block belongs to, so even a
+   correctly-positioned fixed menu can render behind/in front of unrelated
+   page content inconsistently if such an ancestor exists (reported live: the
+   sidebar's avatar menu, nested inside the animated dashboard shell,
+   intermittently rendered under phase-card content). `dropdown.js` now
+   portals `.dropdown-menu` to a direct child of `document.body` on open (the
+   same fix `.custom-select-listbox` below already uses for the identical bug
+   class) — it is no longer a DOM descendant of `.dropdown`, so its
+   open/closed visibility is driven by `.dropdown-menu.open` directly, not a
+   `.dropdown.open .dropdown-menu` descendant selector. */
 .dropdown { position: relative; display: inline-flex; min-width: 0; }
 .dropdown-menu {
   position: fixed;
@@ -1191,7 +1208,7 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   flex-direction: column;
   z-index: 210;
 }
-.dropdown.open .dropdown-menu { display: flex; }
+.dropdown-menu.open { display: flex; }
 .dropdown-item {
   display: block;
   width: 100%;

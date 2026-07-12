@@ -268,8 +268,13 @@ export function openCreateRoadmapModal() {
     // provider-specific callout surfaces the actual fix up front, since
     // resending the same way ("fix it and resend") reproduces the identical
     // corruption every time.
+    // A distinct class from .form-message.error (summaryMsg's class) —
+    // both a Playwright locator and this modal's own DOM structure need to
+    // tell "N things need fixing" apart from this callout unambiguously
+    // (a bare `.form-message.error` locator matched both, breaking
+    // tests/e2e/importRoadmap.test.js in CI once this element existed).
     const corruptionHint = el('p', {
-      className: 'form-message error',
+      className: 'import-corruption-hint',
       hidden: true,
       text: 'This looks like it was copied from ChatGPT\'s rendered response instead of the raw text. In ChatGPT, use the copy-code button in the top-right corner of the code block (not text selection) — then paste again.'
     });

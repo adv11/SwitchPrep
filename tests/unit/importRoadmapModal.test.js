@@ -235,8 +235,9 @@ describe('openCreateRoadmapModal — paste-and-import column', () => {
     pasteArea.dispatchEvent(new Event('input'));
     vi.advanceTimersByTime(300);
 
-    const hints = [...overlay.querySelectorAll('.form-message.error')].filter(el => !el.hidden);
-    expect(hints.some(el => el.textContent.includes('copy-code button'))).toBe(true);
+    const hint = overlay.querySelector('.import-corruption-hint');
+    expect(hint.hidden).toBe(false);
+    expect(hint.textContent).toContain('copy-code button');
     vi.useRealTimers();
   });
 
@@ -249,8 +250,7 @@ describe('openCreateRoadmapModal — paste-and-import column', () => {
     pasteArea.dispatchEvent(new Event('input'));
     vi.advanceTimersByTime(300);
 
-    const hints = [...overlay.querySelectorAll('.form-message.error')].filter(el => !el.hidden);
-    expect(hints.some(el => el.textContent.includes('copy-code button'))).toBe(false);
+    expect(overlay.querySelector('.import-corruption-hint').hidden).toBe(true);
     vi.useRealTimers();
   });
 
