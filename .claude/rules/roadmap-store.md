@@ -516,6 +516,31 @@ and section titles get the identical check. This is a heuristic, not a formal gr
 if you ever need a sixth marker, add it to `CORRUPTION_MARKERS` rather than writing a new
 detection path.
 
+**Corrupted-text detection, confirmed against a real ChatGPT payload (issue #121 item 1).**
+Issue #100's hypothesis above was confirmed, not disproven, by a live captured payload: a
+"Music Development" roadmap pasted from ChatGPT's web UI reproduced the exact
+`looksCorrupted` errors reported (41 of them, one real payload, verified via
+`tests/unit/fixtures/chatgptCorruptedPayload.js`). Every corrupted field was literal
+markdown-link syntax (`[label](url%22},{%22...)`) spliced into JSON string values —
+ChatGPT's renderer auto-linkified the bare `https://` URLs it found inside the JSON, and
+copying the *rendered* response (not via ChatGPT's own "copy code" button) captured that
+markdown-link source text instead of raw JSON. The identical prompt handed to Claude in the
+same session did not trigger this and imported cleanly on the first attempt — this is a
+ChatGPT-web-UI-specific rendering behavior, not a generic AI-output quirk, and not a false
+positive or bug in `looksCorrupted()`/`parseImportJson()` (both were already correctly
+rejecting genuinely corrupted data). Per issue #121's own decision tree for this finding
+("if confirmed as a ChatGPT-UI copy-mechanism issue: add explicit, provider-specific
+guidance... rather than relying on the generic hint"), the fix is UI guidance, not a
+validator/recovery change: `importRoadmapModal.js`'s `corruptionHint` element shows a
+ChatGPT-specific callout ("use the copy-code button in the top-right corner of the code
+block, not text selection") whenever any validation error contains `'looks corrupted'`,
+above the generic per-error `CORRUPTION_HINT` text that stays in "technical details". A
+best-effort *repair* pass (recovering the clean substring instead of rejecting) was
+explicitly **not** attempted — the issue itself flagged that a repair heuristic needs its
+own dedicated test fixtures and risks silently producing a wrong-but-plausible title, which
+is harder for a user to notice than today's hard rejection; if repair is ever built, it
+needs that same rigor, not a quick addition here.
+
 **"Resources" filter chip — see all resource links "in one go" (issue #100 follow-up).**
 Real feedback: once AI-generated roadmaps commonly carry resource links, there was no way
 to see every one without opening each topic's edit panel individually. `dashboard.js`'s
