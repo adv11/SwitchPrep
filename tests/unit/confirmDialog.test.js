@@ -10,6 +10,45 @@ beforeEach(() => {
 });
 
 describe('confirmDialog', () => {
+  it('uses btn-danger styling when danger is true, btn-primary otherwise', async () => {
+    const dangerPromise = confirmDialog({ title: 'Delete?', message: 'Sure?', danger: true });
+    await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).not.toBeNull());
+    expect(document.querySelector('[data-action="confirm"]').className).toContain('btn-danger');
+    clickDialogAction('cancel');
+    await dangerPromise;
+
+    const nonDangerPromise = confirmDialog({ title: 'Save?', message: 'Sure?', danger: false });
+    await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).not.toBeNull());
+    const confirmBtn = document.querySelector('[data-action="confirm"]');
+    expect(confirmBtn.className).toContain('btn-primary');
+    expect(confirmBtn.className).not.toContain('btn-danger');
+    clickDialogAction('cancel');
+    await nonDangerPromise;
+  });
+
+  it('resolves false when the overlay itself is clicked (not the card)', async () => {
+    const promise = confirmDialog({ title: 'Delete?', message: 'Sure?' });
+    await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).not.toBeNull());
+    document.querySelector('.modal-overlay').click();
+    await expect(promise).resolves.toBe(false);
+  });
+
+  it('does not close when a click on the card bubbles to the overlay', async () => {
+    const promise = confirmDialog({ title: 'Delete?', message: 'Sure?' });
+    await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).not.toBeNull());
+    document.querySelector('.modal-card').click();
+    expect(document.querySelector('.modal-overlay')).not.toBeNull();
+    clickDialogAction('cancel');
+    await expect(promise).resolves.toBe(false);
+  });
+
+  it('resolves false on Escape via the shared focus trap', async () => {
+    const promise = confirmDialog({ title: 'Delete?', message: 'Sure?' });
+    await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).not.toBeNull());
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await expect(promise).resolves.toBe(false);
+  });
+
   it('resolves true immediately on confirm when no onConfirm is passed', async () => {
     const promise = confirmDialog({ title: 'Delete?', message: 'Sure?' });
     await vi.waitFor(() => expect(document.querySelector('.modal-overlay')).not.toBeNull());
