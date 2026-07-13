@@ -3278,3 +3278,27 @@ own tabs in issue #64) — it stays as a documented, tested primitive. `LocalSto
 is closed as **not planned**, same precedent as Google Drive sync (#5/#71) — the file stays
 (tested, harmless, a real future guest-only-local-mode feature could still pick it up) but
 `.claude/rules/roadmap-store.md` no longer describes it as open-ended scaffolding.
+
+### 2026-07-13 — PR #TBD — CI actually enforces coverage thresholds; router/confirmDialog/toast get direct unit tests (issue #128)
+
+`ci.yml`'s `test-unit` job ran plain `npm test` (`vitest run`), not `npm run test:coverage`
+(`vitest run --coverage`) — `coverage.thresholds` in `vitest.config.js` is only evaluated
+when coverage collection is enabled, so the configured `statements: 20, branches: 15,
+functions: 20, lines: 20` gate had never actually run in CI since it was written, and the
+"Upload coverage" artifact step was silently uploading an empty/missing `coverage/` directory
+on every run. Fixed by pointing the job at the already-defined `test:coverage` script — no
+new script needed. Running it locally with the new tests below in place measures real
+repo-wide coverage for the first time (79.5%/73.7%/78.3%/81.0% statements/branches/
+functions/lines), comfortably above the configured thresholds with no adjustment needed.
+Also added the three still-missing direct unit test files for foundational, widely-reused UI
+modules previously exercised only incidentally through other pages' tests: `router.js`
+(`registerRoute`/`navigate`/`startRouter`, including hashchange-triggered re-dispatch,
+per-route cleanup-before-next-render, and listener teardown via the returned `stop()`),
+`toast.js` (type-based class, show/auto-dismiss timing via Vitest fake timers, multi-toast
+stacking without cross-toast interference), and new cases in the pre-existing
+`confirmDialog.test.js` (the `danger` styling branch, overlay-click dismissal, and Escape
+dismissal via the shared `attachFocusTrap` — both dismissal paths are genuinely implemented,
+so no follow-up gap to file). Both `router.test.js` and `toast.test.js` reset the module
+registry (`vi.resetModules()`) and re-import fresh per test, since both modules hold
+module-level singleton state (`router.js`'s `routes` Map/`currentCleanup`, `toast.js`'s
+shared stack `root` node) that would otherwise leak listeners/DOM references across tests.
