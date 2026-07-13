@@ -10,7 +10,7 @@ test.describe('roadmap sharing — publish, view, revoke', () => {
   test('a published link renders read-only for an unauthenticated visitor, and 404s after revoke', async ({ page, browser }) => {
     test.skip(!FIREBASE_CONFIGURED, 'Requires FIREBASE_CONFIGURED env var — see issue #37');
 
-    await page.context().grantPermission(['clipboard-read', 'clipboard-write']);
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto('/#/signin');
     await page.click('text=Continue as guest');
     await expect(page).toHaveURL(/#\/onboarding/, { timeout: 10_000 });
