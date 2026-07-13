@@ -15,6 +15,7 @@ import { renderLanding } from './ui/pages/landing.js';
 import { renderSharedRoadmapView } from './ui/pages/sharedRoadmapView.js';
 import { createFeedbackWidget } from './ui/components/feedbackWidget.js';
 import { registerServiceWorker } from './services/serviceWorkerRegistration.js';
+import { initReminderScheduler } from './services/reminderScheduler.js';
 import { showToast } from './ui/components/toast.js';
 
 migrateLocalStorageKeys();
@@ -37,6 +38,9 @@ const store = createRoadmapStore({
   onCompletionToggle: delta => (delta > 0 ? activityLogStore.recordCompletion() : activityLogStore.recordUncompletion())
 });
 const dailyTodoStore = createDailyTodoStore();
+// App-lifetime, never unmounted — same precedent as feedbackWidget.js above
+// (issue #132).
+initReminderScheduler(dailyTodoStore);
 
 let currentUser = null;
 let routeCleanup = null;

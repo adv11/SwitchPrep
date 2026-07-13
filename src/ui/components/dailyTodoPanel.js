@@ -8,6 +8,7 @@ import { isExpired, remainingMs, formatRemaining, remainingBand } from '../utils
 import { MAX_TODO_TITLE_LENGTH, MAX_ACTIVE_TODOS, DURATION_PRESETS, MIN_DURATION_MS, MAX_DURATION_MS } from '../../core/dailyTodo/limits.js';
 import { getTemplate } from '../../data/templates/index.js';
 import { KEYS } from '../../services/localStorageKeys.js';
+import { remindersEnabled, enableReminders, disableReminders } from '../../services/reminderScheduler.js';
 
 const CUSTOM_VALUE = 'custom';
 const DEFAULT_PRESET_MS = DURATION_PRESETS.find(p => p.label === '24 hours')?.ms || DURATION_PRESETS[0].ms;
@@ -245,6 +246,35 @@ export function createDailyTodoPanel(store, roadmapStore) {
   // pre-collapsed.
   let collapsed = localStorage.getItem(KEYS.DAILY_TODOS_COLLAPSED) === 'true';
 
+  // Opt-in local reminder toggle (issue #132) — off by default, never
+  // requested on page load. requestPermission() must come from a real click.
+  const reminderBtn = el('button', {
+    type: 'button',
+    className: 'daily-todo-reminder-btn',
+    onClick: async () => {
+      if (remindersEnabled()) {
+        disableReminders();
+        applyReminderState();
+        showToast('Reminders turned off.', 'success');
+        return;
+      }
+      const granted = await enableReminders();
+      applyReminderState();
+      showToast(
+        granted ? 'Reminders on — you\'ll get a notification 15 minutes before a todo is due.' : 'Notifications were blocked — enable them in your browser settings to use reminders.',
+        granted ? 'success' : 'error'
+      );
+    }
+  }, [createIcon('bell', { size: 'sm' })]);
+
+  function applyReminderState() {
+    const enabled = remindersEnabled();
+    reminderBtn.classList.toggle('active', enabled);
+    reminderBtn.setAttribute('aria-pressed', String(enabled));
+    reminderBtn.setAttribute('aria-label', enabled ? 'Turn off due-soon reminders' : 'Turn on due-soon reminders');
+    reminderBtn.title = enabled ? 'Reminders on' : 'Remind me';
+  }
+
   const countBadge = el('span', { className: 'daily-todo-count-badge' });
   const collapseBtn = el('button', {
     type: 'button',
@@ -295,6 +325,7 @@ export function createDailyTodoPanel(store, roadmapStore) {
       el('span', { className: 'daily-todo-icon' }, [createIcon('timer', { size: 'sm' })]),
       el('h2', { className: 'daily-todo-heading', text: "Today's Todos" }),
       countBadge,
+      reminderBtn,
       el('button', {
         type: 'button',
         className: 'daily-todo-info-btn',
@@ -311,6 +342,7 @@ export function createDailyTodoPanel(store, roadmapStore) {
   ]);
 
   applyCollapsedState();
+  applyReminderState();
 
   node._cleanup = () => {
     unsubStore();

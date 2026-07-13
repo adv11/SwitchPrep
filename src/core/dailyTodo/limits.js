@@ -28,6 +28,13 @@ export const DURATION_PRESETS = [
   { label: '48 hours', ms: 48 * 60 * 60 * 1000 }
 ];
 
+// Local reminder lead time (issue #132) — how long before a todo's
+// `expiresAt` its "Remind me" notification fires. A named constant here
+// (not a magic number in reminderScheduling.js/reminderScheduler.js) since
+// dailyTodoStore.js/dailyTodoPanel.js already import their own duration
+// caps from this same module.
+export const REMINDER_LEAD_MS = 15 * 60 * 1000; // 15 minutes
+
 export function clampDurationMs(ms) {
   if (!Number.isFinite(ms)) return null;
   return Math.min(Math.max(ms, MIN_DURATION_MS), MAX_DURATION_MS);

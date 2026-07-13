@@ -8,6 +8,7 @@
 // src/data/templates/java-backend.js. Bumping it busts every cache name
 // below, so `activate` deletes the old ones on next load.
 import { isFirebaseApiRequest, cacheFirst, networkFirst } from './src/services/sw/cacheStrategies.js';
+import { findClientToFocus, getReminderTargetUrl } from './src/services/sw/notificationHelpers.js';
 
 const CACHE_VERSION = 1;
 const STATIC_CACHE = `ascent-static-v${CACHE_VERSION}`;
@@ -75,5 +76,21 @@ self.addEventListener('fetch', event => {
     caches.open(STATIC_CACHE).then(cache =>
       cacheFirst(request, cache).catch(() => caches.match(OFFLINE_URL))
     )
+  );
+});
+
+// Daily Todo local reminder notifications (issue #132) — showNotification()
+// is called by reminderScheduler.js's own setTimeout, not here; this handler
+// only reacts to the user clicking one. Focuses an existing app window if
+// one is open, or opens a new one at the Daily Todos panel's location
+// (.claude/rules/roadmap-store.md's "Placement" note) otherwise.
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window' }).then(clients => {
+      const existing = findClientToFocus(clients);
+      if (existing) return existing.focus();
+      return self.clients.openWindow(getReminderTargetUrl());
+    })
   );
 });
