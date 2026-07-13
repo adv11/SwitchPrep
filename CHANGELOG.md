@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Local "Remind me" reminders for Daily Todo deadlines (issue #132, Phase A).** An opt-in bell toggle next to the Daily Todos heading requests notification permission and, once granted, schedules a local browser notification 15 minutes before each active todo's deadline — no server, no push infrastructure, works while the app/PWA is open or backgrounded on this device. Clicking the notification focuses an already-open app window or opens one at the Daily Todos panel. Completing or deleting a todo before its reminder fires cancels the scheduled notification. This is a single-device, best-effort reminder, not real cross-device push — a real server-push follow-up (Cloud Functions + FCM) is deliberately out of scope, tracked separately if it's ever needed (see `.claude/rules/roadmap-store.md`).
+
 ### Fixed
 - **Publishing a share link for a genuinely empty roadmap (no phases yet) always failed with a generic error (issue #131 follow-up).** `sharedRoadmaps/{shareId}`'s Firebase rule required `phases`/`items` to be present via `hasChildren([...])`, but Realtime Database silently drops an empty array/object on write — so a share snapshot with no phases yet never actually created those keys, and validation rejected it every time with a `permission_denied` indistinguishable from an unrelated write-permission failure. Found by testing the deployed rule directly against a real Firebase emulator instance. The rule's required-field list now only lists the fields that are always scalar and therefore always present; added `tests/e2e/roadmapSharingRules.test.js`, direct emulator-backed coverage of the rule's create/no-edit/owner-only-revoke behavior that issue #131 called for but the original PR's E2E test didn't independently verify.
 

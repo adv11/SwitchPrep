@@ -2084,6 +2084,27 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .daily-todo-info-btn:hover { color: var(--accent); border-color: var(--accent); }
 .daily-todo-info-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
 
+/* Local reminder opt-in toggle (issue #132) — same 24x24/'sm'-icon box as
+   .daily-todo-info-btn/.daily-todo-collapse-btn above (see the "Two same-row
+   circular icon-buttons" rule). .active marks reminders as currently on. */
+.daily-todo-reminder-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.daily-todo-reminder-btn:hover { color: var(--accent); border-color: var(--accent); }
+.daily-todo-reminder-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+.daily-todo-reminder-btn.active { color: var(--accent); border-color: var(--accent); }
+
 /* Collapse/expand toggle (issue #83) — reuses the exact same chevron-rotate
    language as .phase-card/.chevron (dashboard.js's phase cards) so the two
    "expandable section" affordances in the app read consistently: pointing
@@ -3680,7 +3701,7 @@ textarea.feedback-field-input { min-height: 88px; resize: vertical; }
   .btn-sm { min-height: 44px; }
   .filter-chip { min-height: 44px; }
   .check-item { min-height: 44px; }
-  .daily-todo-delete, .daily-todo-info-btn, .daily-todo-collapse-btn { width: 44px; height: 44px; }
+  .daily-todo-delete, .daily-todo-info-btn, .daily-todo-collapse-btn, .daily-todo-reminder-btn { width: 44px; height: 44px; }
   .feedback-widget-trigger { min-height: 44px; }
 }
 

@@ -74,7 +74,13 @@ export const KEYS = {
   LAST_SEEN_CHANGELOG_VERSION: 'ascent-last-seen-version',
   // "New" feature badges (issue #20 Phase C) — `{ [featureKey]: { firstShownAt: number, dismissed: boolean } }`.
   // Device-level, same reasoning as LAST_SEEN_CHANGELOG_VERSION above.
-  FEATURE_BADGE_STATE: 'ascent-feature-badge-state'
+  FEATURE_BADGE_STATE: 'ascent-feature-badge-state',
+  // Daily Todo local reminder opt-in (issue #132) — 'true' only once the
+  // user has explicitly opted in AND Notification.requestPermission()
+  // actually granted. Device-level (a single-device, best-effort reminder,
+  // no cross-device push — see .claude/rules/roadmap-store.md), same
+  // pattern as DAILY_TODOS_COLLAPSED.
+  DAILY_TODO_REMINDERS_ENABLED: 'ascent-daily-todo-reminders-enabled'
 };
 
 export function verifyDismissedKey(uid) {
