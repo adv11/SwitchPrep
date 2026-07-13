@@ -127,6 +127,15 @@ describe('createSidebar — account identity', () => {
     expect(itemText).toEqual(['Settings', 'My reports', 'Download backup (JSON)', 'Export CSV', 'Import backup…']);
   });
 
+  // Issue #123 — persistent local-only-data risk indicator, guest only.
+  it('shows a guest-only local-data risk indicator in the identity area', async () => {
+    const guestNode = await freshSidebar({ activeRoute: '/app', user: { isAnonymous: true }, store: fakeStore() });
+    expect(guestNode.querySelector('.app-sidebar-guest-risk')).not.toBeNull();
+
+    const realNode = await freshSidebar({ activeRoute: '/app', user: { isAnonymous: false, email: 'jane@example.com' }, store: fakeStore() });
+    expect(realNode.querySelector('.app-sidebar-guest-risk')).toBeNull();
+  });
+
   it('wraps the identity in a dropdown with a "Delete account" item for a signed-in user', async () => {
     const onDeleteAccount = vi.fn();
     const node = await freshSidebar({

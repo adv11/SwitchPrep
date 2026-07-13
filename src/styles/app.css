@@ -1093,12 +1093,21 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Issue #123 — persistent local-only-data risk indicator next to "Guest
+   session". Colored with --accent (not --danger) since it's informational,
+   not an active error state. */
+.app-sidebar-guest-risk {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--accent);
+}
 
 /* Collapsed — manual desktop icon-rail toggle, persisted to localStorage
    (sidebar.js). Independent of the automatic tablet-width rail below. */
 .app-sidebar.collapsed { width: 64px; }
 .app-sidebar.collapsed .nav-item-label,
 .app-sidebar.collapsed .app-sidebar-user-email,
+.app-sidebar.collapsed .app-sidebar-guest-risk,
 .app-sidebar.collapsed .brand-name,
 .app-sidebar.collapsed .brand-tagline { display: none; }
 .app-sidebar.collapsed .nav-item { justify-content: center; }
@@ -1376,6 +1385,7 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   .app-sidebar { width: 56px; padding: var(--space-3) var(--space-2); }
   .app-sidebar .nav-item-label,
   .app-sidebar .app-sidebar-user-email,
+  .app-sidebar .app-sidebar-guest-risk,
   .app-sidebar .brand-name,
   .app-sidebar .brand-tagline { display: none; }
   .app-sidebar .nav-item { justify-content: center; }

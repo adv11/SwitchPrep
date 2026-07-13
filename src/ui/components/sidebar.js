@@ -4,6 +4,7 @@ import { createBrandMark } from './brand.js';
 import { createAvatar } from './avatar.js';
 import { createDropdown } from './dropdown.js';
 import { createIcon } from './icons.js';
+import { attachTooltip } from './tooltip.js';
 import { confirmAndSignOut } from '../utils/signOut.js';
 import { KEYS } from '../../services/localStorageKeys.js';
 import { exportBackupJson, exportBackupCsv, importBackupFromFile } from '../utils/backupActions.js';
@@ -88,13 +89,26 @@ export function createSidebar({ activeRoute, user, store, dailyTodoStore, onDele
   }, [createIcon('collapse', { size: 'sm' })]);
 
   const userLabel = user.isAnonymous ? 'Guest session' : (user.email || 'Signed in');
+  // Issue #123 — a persistent, unobtrusive risk indicator next to the "Guest
+  // session" label, since nothing anywhere in the app previously told a guest
+  // their roadmap is local-only and can be silently lost (cleared browser
+  // data, a new device, a lost tab). Icon-only so it doesn't compete for
+  // space with the identity label; the tooltip carries the actual warning.
+  const guestRiskIndicator = user.isAnonymous ? el('span', {
+    className: 'app-sidebar-guest-risk',
+    'aria-label': 'Local-only guest session — your roadmap could be lost if you clear browser data or switch devices'
+  }, [createIcon('info', { size: 'xs' })]) : null;
+  if (guestRiskIndicator) {
+    attachTooltip(guestRiskIndicator, 'Local-only — could be lost if you clear browser data or switch devices');
+  }
   const identityTrigger = el('button', {
     type: 'button',
     className: 'app-sidebar-identity',
     'aria-label': `Account menu — ${userLabel}`
   }, [
     createAvatar(user, 'sm'),
-    el('span', { className: 'app-sidebar-user-email', text: userLabel })
+    el('span', { className: 'app-sidebar-user-email', text: userLabel }),
+    guestRiskIndicator
   ]);
 
   const { identity, importInput } = buildAccountMenu({ user, store, identityTrigger, onDeleteAccount });
