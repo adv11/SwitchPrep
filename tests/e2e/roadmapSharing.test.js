@@ -26,13 +26,16 @@ test.describe('roadmap sharing — publish, view, revoke', () => {
     const status = modal.locator('.share-roadmap-modal-status');
     await expect(status).toContainText('#/shared?id=', { timeout: 10_000 });
     const statusText = await status.textContent();
+    // Navigate straight to the captured absolute URL — a context created via
+    // browser.newContext() (below) does not inherit playwright.config.js's
+    // `use.baseURL` the way the test-fixtured `page`/`context` do, so a
+    // relative goto('/#/shared?id=...') here would resolve against nothing.
     const shareUrl = statusText.match(/https?:\/\/\S+/)[0];
-    const shareId = new URL(shareUrl.replace('#', '')).searchParams.get('id') || shareUrl.split('id=')[1];
 
     // Fresh, unauthenticated context — a stranger with the link.
     const guestContext = await browser.newContext();
     const guestPage = await guestContext.newPage();
-    await guestPage.goto(`/#/shared?id=${shareId}`);
+    await guestPage.goto(shareUrl);
     await expect(guestPage.locator('.shared-view')).toBeVisible({ timeout: 10_000 });
     await expect(guestPage.locator('.shared-item-list')).toBeVisible();
     await expect(guestPage.locator('input[type="checkbox"]')).toHaveCount(0);
@@ -45,7 +48,7 @@ test.describe('roadmap sharing — publish, view, revoke', () => {
 
     const revokedContext = await browser.newContext();
     const revokedPage = await revokedContext.newPage();
-    await revokedPage.goto(`/#/shared?id=${shareId}`);
+    await revokedPage.goto(shareUrl);
     await expect(revokedPage.locator('.shared-view-state')).toBeVisible({ timeout: 10_000 });
     await expect(revokedPage.locator('.shared-view-state')).toContainText('revoked');
     await revokedContext.close();
