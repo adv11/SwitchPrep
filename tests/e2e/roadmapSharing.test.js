@@ -44,7 +44,10 @@ test.describe('roadmap sharing — publish, view, revoke', () => {
     const guestPage = await guestContext.newPage();
     await guestPage.goto(shareUrl);
     await expect(guestPage.locator('.shared-view')).toBeVisible({ timeout: 10_000 });
-    await expect(guestPage.locator('.shared-item-list')).toBeVisible();
+    // One .shared-item-list per section — the full Java Backend Engineer
+    // roadmap has many — so assert there's at least one rather than a single
+    // unique match (which is what .toBeVisible() requires in strict mode).
+    await expect(guestPage.locator('.shared-item-list').first()).toBeVisible();
     await expect(guestPage.locator('input[type="checkbox"]')).toHaveCount(0);
     await guestContext.close();
 
