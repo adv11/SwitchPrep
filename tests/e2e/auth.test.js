@@ -32,6 +32,18 @@ test('guest session starts, lands on the onboarding picker, and reaches the dash
   await expect(page.locator('.brand-name')).toContainText('Ascent');
 });
 
+// Issue #123 — a guest's roadmap is local-only; the sidebar must carry a
+// persistent risk indicator for that identity, and never for a real account.
+test('guest session shows a local-data risk indicator in the sidebar; a signed-in session does not', async ({ page }) => {
+  test.skip(!FIREBASE_CONFIGURED, 'Requires FIREBASE_CONFIGURED env var — see issue #37');
+  await page.goto('/#/signin');
+  await page.click('text=Continue as guest');
+  await expect(page).toHaveURL(/#\/onboarding/, { timeout: 10_000 });
+  await page.locator('.template-card', { hasText: 'Java Backend Engineer' }).click();
+  await expect(page.locator('.dashboard')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.app-sidebar-guest-risk')).toBeVisible();
+});
+
 test('"Forgot password?" link is visible on sign-in screen', async ({ page }) => {
   await page.goto('/#/signin');
   await expect(page.locator('.forgot-link')).toBeVisible({ timeout: 10_000 });

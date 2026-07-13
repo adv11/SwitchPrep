@@ -98,3 +98,12 @@ export function lastBackupAtKey(uid) {
 export function backupReminderDismissedAtKey(uid) {
   return `ascent-backup-reminder-dismissed-${uid}`;
 }
+
+// Guest data-risk nudge (issue #123) — a one-shot dismiss-and-remember flag,
+// same per-uid keyed pattern as the backup-reminder timestamps above.
+// Device-level: if a guest clears storage, this flag is gone too, but so is
+// everything else the nudge exists to warn about, so re-showing it once more
+// on a cleared device is harmless.
+export function guestRiskNudgeShownKey(uid) {
+  return `ascent-guest-risk-nudge-shown-${uid}`;
+}

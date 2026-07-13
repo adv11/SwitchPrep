@@ -6,6 +6,7 @@ import { createThemeToggle } from '../components/themeToggle.js';
 import { createChangelogBell } from '../components/notificationBell.js';
 import { createVerificationBanner } from '../components/verificationBanner.js';
 import { createBackupReminderBanner } from '../components/backupReminderBanner.js';
+import { maybeShowGuestDataRiskNudge } from '../components/guestDataRiskNudge.js';
 import { confirmDialog } from '../components/confirmDialog.js';
 import { openDeleteAccountModal } from '../components/deleteAccountModal.js';
 import { readDefaultFilterPreference } from '../utils/defaultFilterPreference.js';
@@ -1148,6 +1149,7 @@ export function renderDashboard(app, { user, store, dailyTodoStore }) {
   lastStructuralVersion = store.getSnapshot().structuralVersion;
   render(store.getSnapshot());
   applyScrollToPhaseSignal();
+  maybeShowGuestDataRiskNudge({ user, store });
 
   // 30s resolution matches dailyTodoPanel.js's own countdown tick — enough
   // for hour/minute-granularity text without a busier interval.

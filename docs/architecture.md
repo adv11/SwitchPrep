@@ -3246,3 +3246,15 @@ See `.claude/rules/roadmap-store.md`'s "A dirty real account must be flushed" an
 "`switchRoadmap()`'s three network round trips run concurrently" sections for the full
 reasoning, and `docs/api.md`'s `switchRoadmap`/`createCustomRoadmap` entries for the
 updated signatures.
+
+### 2026-07-13 — PR #TBD — Guest data-loss risk indicator + nudge (issue #123)
+
+New module `src/ui/components/guestDataRiskNudge.js` (`maybeShowGuestDataRiskNudge`) plus
+a pure helper `src/ui/utils/guestDataRisk.js` (`shouldShowGuestRiskNudge`/
+`markGuestRiskNudgeShown`, one-shot dismiss-and-remember state under
+`guestRiskNudgeShownKey(uid)`, `localStorageKeys.js`). `dashboard.js` calls it once on
+mount; it shows a `confirmDialog` (reusing the existing primitive, not a new one) at most
+once per guest account, once at least 5 topics are completed, offering to navigate to
+`/signup`. `sidebar.js` also grew a small always-on `.app-sidebar-guest-risk` indicator
+(tooltip via `attachTooltip`) next to the "Guest session" label — purely presentational,
+no new store state. See `.claude/rules/auth-security.md` for the full writeup.
