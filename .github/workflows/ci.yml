@@ -124,6 +124,11 @@ jobs:
       - run: npm ci
       - name: Write Firebase config (dummy, app just needs to boot to render '/')
         run: cp src/services/firebase.config.example.js src/services/firebase.config.js
+      - name: Install Chromium (same browser test-e2e already verifies works in this runner)
+        run: npx playwright install --with-deps chromium
+      - name: Resolve Chromium executable path
+        id: chrome-path
+        run: echo "path=$(node -e "console.log(require('playwright-core').chromium.executablePath())")" >> "$GITHUB_OUTPUT"
       - name: Start dev server
         run: npm run dev &
       - name: Wait for dev server
@@ -136,6 +141,8 @@ jobs:
           curl -sf http://localhost:4173/ || { echo "❌ Dev server failed to start within 30s"; exit 1; }
       - name: Run Lighthouse CI against landing + sign-in pages
         uses: treosh/lighthouse-ci-action@v11
+        env:
+          CHROME_PATH: ${{ steps.chrome-path.outputs.path }}
         with:
           configPath: ./lighthouserc.json
           urls: |
