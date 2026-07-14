@@ -113,7 +113,44 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
-  # ── Job 5: PR checklist enforcement ───────────────────────────────────────
+  # ── Job 5: Lighthouse CI performance budget (issue #137 Phase 3) ─────────
+  lighthouse:
+    name: Lighthouse CI (perf budget)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - name: Write Firebase config (dummy, app just needs to boot to render '/')
+        run: cp src/services/firebase.config.example.js src/services/firebase.config.js
+      - name: Install Chromium (same browser test-e2e already verifies works in this runner)
+        run: npx playwright install --with-deps chromium
+      - name: Resolve Chromium executable path
+        id: chrome-path
+        run: echo "path=$(node -e "console.log(require('playwright-core').chromium.executablePath())")" >> "$GITHUB_OUTPUT"
+      - name: Start dev server
+        run: npm run dev &
+      - name: Wait for dev server
+        run: |
+          for i in {1..30}; do
+            curl -sf http://localhost:4173/ && echo "Dev server ready" && break
+            echo "Waiting... ($i/30)"
+            sleep 1
+          done
+          curl -sf http://localhost:4173/ || { echo "❌ Dev server failed to start within 30s"; exit 1; }
+      - name: Run Lighthouse CI against the landing page
+        uses: treosh/lighthouse-ci-action@v11
+        env:
+          CHROME_PATH: ${{ steps.chrome-path.outputs.path }}
+        with:
+          configPath: ./lighthouserc.json
+          urls: |
+            http://localhost:4173/
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+  # ── Job 6: PR checklist enforcement ───────────────────────────────────────
   pr-checklist:
     name: PR description check
     runs-on: ubuntu-latest
