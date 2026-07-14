@@ -3583,3 +3583,24 @@ component wired to the new tokens yet — that's Phase B onward. Every value
 live-verified for WCAG contrast; full writeup and the retune-vs-parallel-family
 decision rationale in `.claude/rules/ui-styling.md`'s "Visual design language v2"
 section.
+
+### 2026-07-14 — PR #TBD — New shared component classes, Phase B of issue #155's v2 redefinition (lime/near-black direction)
+
+Phase B: `.kpi-tile`/`.kpi-tile-hero`/`.card-arrow-badge`/`.filter-chip-counted` added
+to `src/styles/app.css`, and `chartWrapper.js` gained `createBucketedBarChart()`/
+`createChartLegend()`. Built and visually verified in isolation (a throwaway,
+uncommitted local HTML harness importing the real `app.css` + `dom.js`/`icons.js`/
+`chartWrapper.js`, screenshotted in both themes) — no page consumes any of it yet,
+that's Phase C/D. `.kpi-tile` is a deliberately new name, not `.stat-tile` (the issue's
+own bullet name for it), since `.stat-tile` already exists as a different,
+in-production dashboard component (issue #6 Phase 4.1) and reusing the name would have
+collided with it rather than extended it. The bucketed-bar-chart tooltip is portaled to
+`document.body`, matching `select.js`/`dropdown.js`'s established floating-element
+convention — an earlier version appended it as a sibling of the `<canvas>` instead and
+positioned it with viewport-relative coordinates against a non-document positioning
+ancestor, visibly mispositioning it; caught and fixed during this phase's own isolated
+visual verification, before any page could have inherited the bug. `chart.destroy()`
+is wrapped to also remove the portaled tooltip node so the existing `chart?.destroy()`
+call-site pattern (`progress.js`) stays leak-free with no caller change required. Full
+class/function list and reasoning in `.claude/rules/ui-styling.md`'s "Visual design
+language v2" section.

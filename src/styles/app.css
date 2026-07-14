@@ -2179,6 +2179,71 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .stat-tile-ring-value .stat-tile-number { font-size: var(--text-lg); }
 .stat-tile-ring-value span:not(.stat-tile-number) { font-size: var(--text-xs); margin-left: 1px; }
 
+/* issue #155 v2 Phase B — a distinct new component, `.kpi-tile`, not a `.stat-tile`
+   variant despite the issue's own bullet naming it "`.stat-tile`": `.stat-tile` above
+   is already shipped (issue #6 Phase 4.1) as a horizontal icon-left/number-right row
+   used by the dashboard's stat strip and progress ring — reusing that class name for
+   the reference's structurally different vertical KPI card (label row with a corner
+   badge, then a large number, then a delta caption) would collide with an existing,
+   in-production component rather than extend it. Built and visually verified in
+   isolation this phase — no page wires it in yet, that's Phase C/D's job. Composes
+   with the shared `.card-arrow-badge` corner affordance below (also used by Phase D's
+   planned person/customer cards, per the issue's spec). */
+.kpi-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+.kpi-tile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.kpi-tile-label { font-size: var(--text-sm); font-weight: 700; color: var(--muted); }
+.kpi-tile-number { font-size: var(--text-3xl); font-weight: 900; color: var(--ink); font-variant-numeric: tabular-nums; }
+.kpi-tile-delta { font-size: var(--text-xs); color: var(--muted); font-weight: 600; }
+
+/* The reference's "exactly one hero-highlighted tile per screen" pattern (issue #155 v2
+   redefinition comment) — a single solid-filled tile among otherwise-dark siblings.
+   Falls back to --brand (teal) when --accent-lime is undefined, i.e. light theme, which
+   has no v2 reference material of its own — see ui-styling.md's "Visual design language
+   v2" section for why the lime family is dark-theme-only. */
+.kpi-tile-hero {
+  background: var(--accent-lime, var(--brand));
+  border-color: var(--accent-lime, var(--brand));
+}
+.kpi-tile-hero .kpi-tile-label,
+.kpi-tile-hero .kpi-tile-number,
+.kpi-tile-hero .kpi-tile-delta { color: var(--soft); }
+.kpi-tile-hero .kpi-tile-delta { opacity: 0.75; }
+
+/* Shared circular corner-badge affordance (issue #155 v2 Phase B) — used by `.kpi-tile`
+   above and, per the issue's Phase D scope, planned for person/customer-style cards
+   too. Parent needs `position: relative` (`.kpi-tile` already has it). */
+.card-arrow-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--ink);
+  flex-shrink: 0;
+}
+/* intentional: a fixed black-tint overlay reads as a subtle darkening on top of
+   whichever solid accent color fills `.kpi-tile-hero` (lime in dark theme, brand teal
+   in light theme via the fallback above) — using a token here would fight whichever
+   accent is actually active, since neither --panel-2 nor --line is designed to sit on
+   top of a bright solid fill (issue #155 v2 Phase B). */
+.kpi-tile-hero .card-arrow-badge {
+  background: rgba(0, 0, 0, 0.14);
+  border-color: rgba(0, 0, 0, 0.14);
+  color: var(--soft);
+}
+
 .toolbar {
   max-width: 1160px;
   margin: 0 auto;
@@ -2253,6 +2318,39 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   cursor: pointer;
 }
 .filter-chip-clear:hover { opacity: 1; }
+
+/* issue #155 v2 Phase B — `.filter-chip-counted`, an embedded count sub-badge riding on
+   top of the existing `.filter-chip` base (the reference's "Pending 20"/"Responded
+   22"/"Assigned 16" status-chip row) — a genuinely new compound component per the
+   issue's spec, not a retune: no existing chip class supported a second, visually
+   distinct count badge inside itself before this. Apply alongside the base class
+   (`class="filter-chip filter-chip-counted"`), not as a replacement — `.filter-chip`
+   still owns the pill shape/hover/active-state mechanics, this only adds the badge
+   slot. Built and visually verified in isolation this phase; no page wires it in yet. */
+.filter-chip-counted { display: inline-flex; align-items: center; gap: 8px; }
+.filter-chip-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+/* Inverts against whichever fill `.filter-chip.active` (or a future accent-colored
+   variant of it) ends up using, the same way the base chip's own active text/bg swap
+   works — so the badge reads as "a dark circle on top of a bright fill" regardless of
+   which specific accent colors the active chip, without hardcoding a color here. */
+.filter-chip-counted.active .filter-chip-count-badge {
+  background: var(--emphasis-text);
+  color: var(--emphasis-bg);
+}
 
 .clear-filters-btn[hidden] { display: none; }
 
@@ -3446,6 +3544,66 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .gr-5 { grid-row: 5; }
 .gr-6 { grid-row: 6; }
 .gr-7 { grid-row: 7; }
+
+/* issue #155 v2 Phase B — chartWrapper.js's `createBucketedBarChart()`/
+   `createChartLegend()` support (the reference's multi-color value-bucketed bar chart
+   + floating tooltip + legend row). Built and visually verified in isolation this
+   phase; no page calls the new chartWrapper.js exports yet — that's Phase C/D's job.
+   `.chart-tooltip` is deliberately a fixed white-bg/dark-text card in both themes, not
+   theme-tokened — the reference shows a small white rounded-rect tooltip with dark
+   text regardless of page theme, the same "fixed regardless of site theme" reasoning
+   already used for `.auth-marketing`'s always-dark panel (issue #116). */
+.chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  /* intentional: fixed white card + dark text, same in both themes — mirrors the
+     reference's tooltip exactly rather than following site theme (issue #155 v2). */
+  background: #ffffff;
+  color: #0f172a;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, calc(-100% - 10px));
+  transition: opacity var(--duration-fast) ease;
+  white-space: nowrap;
+}
+.chart-tooltip.visible { opacity: 1; }
+.chart-tooltip-date { display: block; font-weight: 800; margin-bottom: 2px; }
+/* intentional: paired with the fixed white tooltip background above — a muted gray
+   that reads correctly only against white, not a theme token (issue #155 v2). */
+.chart-tooltip-value { display: block; color: #475569; }
+.chart-tooltip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  /* intentional: matches the fixed white tooltip body above (issue #155 v2). */
+  background: #ffffff;
+}
+
+.chart-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; }
+.chart-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--muted); font-weight: 600; }
+.chart-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+/* Per-bucket dot colors as discrete classes, not an inline `style` (index.html's CSP
+   has no `unsafe-inline` for style-src — see the "Never set an inline style" rule
+   above) — mirrors chartWrapper.js's own BUCKET_TOKENS mapping so the legend dots and
+   the bars they describe always agree. */
+/* intentional: the #f0f941 fallback only ever resolves in light theme, where
+   --accent-lime is deliberately undefined (issue #155 v2 is dark-theme-only) — var()'s
+   fallback keeps the "high" dot visibly lime-colored there too rather than resolving
+   to nothing. */
+.chart-legend-dot-high { background: var(--accent-lime, #f0f941); }
+.chart-legend-dot-medium { background: var(--faint); }
+.chart-legend-dot-low { background: var(--line-strong); }
 
 /* Chart containers (B4/B5) — Chart.js is given a fixed-height box with
    `maintainAspectRatio: false` (see chartWrapper.js) since a canvas has no

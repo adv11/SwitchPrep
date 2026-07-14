@@ -353,11 +353,49 @@ tighter values and still clears WCAG AA by a wide margin (`--ink` ~15-17:1, `--m
 — see the retuned tokens' own code comments in `app.css` for the exact per-pairing
 figures.
 
-**New structural patterns:** not yet built — Phase A is tokens only, no component
-wiring. Phase B will add and document here: the `.stat-tile` KPI card (corner
-arrow-badge + hero-highlight variant), the `.filter-chip-counted` pill (an embedded
-count sub-badge on top of the existing `.filter-chip` base), the multi-color
-value-bucketed bar chart series + custom tooltip in `chartWrapper.js`, and the shared
-`.card-arrow-badge` corner affordance used by both stat tiles and person/customer-style
-cards — each with its real class name(s) and file location once shipped, the same
-level of detail the ZeBeyond section above gives its own classes.
+**New structural patterns (Phase B, shipped — built and visually verified in isolation,
+not wired into any real page yet; that's Phase C/D):**
+
+- **`.kpi-tile` / `.kpi-tile-hero`** — the reference's 4-equal-width KPI card (`app.css`).
+  Deliberately **not** named `.stat-tile` despite the issue's own bullet using that
+  name: `.stat-tile` already exists (issue #6 Phase 4.1, the dashboard's horizontal
+  icon-left/number-right stat strip row) — reusing the name for this structurally
+  different vertical card (label + corner badge row, then a large number, then a delta
+  caption) would collide with an in-production component instead of extending it.
+  Structure: `.kpi-tile-head` (label + `.card-arrow-badge`) → `.kpi-tile-number` →
+  `.kpi-tile-delta`. `.kpi-tile-hero` is the "exactly one solid-filled tile per screen"
+  variant — `background: var(--accent-lime, var(--brand))`, falling back to `--brand`
+  teal in light theme (no v2 reference material exists there). Text inside a hero tile
+  reuses the existing `--brand`-on-`--soft` cross-theme trick (`color: var(--soft)`),
+  same as `.btn-cta` in the ZeBeyond section above.
+- **`.card-arrow-badge`** — the shared circular corner-badge affordance (`app.css`),
+  used by `.kpi-tile-head` today and intended for Phase D's planned person/customer
+  cards too, per the issue's spec. Parent needs `position: relative` (`.kpi-tile`
+  already has it).
+- **`.filter-chip-counted`** — an embedded count sub-badge (`.filter-chip-count-badge`)
+  on top of the existing `.filter-chip` base (`app.css`) — apply both classes together
+  (`filter-chip filter-chip-counted`), never as a replacement. The badge inverts
+  `--emphasis-bg`/`--emphasis-text` (the same pair `.filter-chip.active` itself already
+  uses) so it always reads as "a dark circle on top of whichever bright fill the active
+  chip ends up using," without hardcoding a color — verified visually in both themes.
+- **`chartWrapper.js`'s `createBucketedBarChart(canvas, { labels, values, bucketOf })`**
+  — a value-bucketed multi-color bar series (defaults to a tercile split over `values`
+  when `bucketOf` is omitted; high/medium/low map to `--accent-lime`/`--faint`/
+  `--line-strong`) plus a custom floating tooltip (`.chart-tooltip`, `app.css` — a fixed
+  white-card/dark-text tooltip in both themes, matching the reference exactly rather
+  than following site theme, same reasoning as `.auth-marketing`'s always-dark panel).
+  The tooltip is **portaled to `document.body`**, not appended near the canvas — this
+  app's established "every floating/positioned element is a portal" convention
+  (`select.js`/`dropdown.js`, this file's transformed-ancestor section above). This
+  wasn't a hypothetical precaution: an earlier version of this component appended the
+  tooltip as a sibling of the canvas and positioned it with viewport-relative
+  coordinates, which only works when the tooltip's positioning ancestor is the
+  document itself — the mismatch was caught during this phase's own isolated visual
+  verification (the tooltip rendered nowhere near the hovered bar) and fixed before
+  Phase C/D ever wires this into a real page. `chart.destroy()` is wrapped to also
+  remove the portaled tooltip node, so the existing `chart?.destroy()` call-site
+  pattern (`progress.js`) needs no change to stay leak-free.
+- **`createChartLegend(items?)`** (`chartWrapper.js`) — the reference's "dot + label"
+  row (`.chart-legend`, `app.css`), defaulting to the high/medium/low bucket set above.
+  Per-bucket dot colors are discrete `.chart-legend-dot-{bucket}` classes, not an
+  inline `style` (CSP has no `unsafe-inline` for `style-src`).

@@ -1,3 +1,5 @@
+import { el } from '../dom.js';
+
 // Lazy Chart.js loader + thin wrapper (issue #8, B4/B5) — Chart.js is not an
 // npm dependency (this repo has no build step/bundler — see root CLAUDE.md);
 // it's dynamically imported from a pinned-version jsdelivr URL, and only the
@@ -124,4 +126,111 @@ export async function createBarChart(canvas, { labels, counts, rollingAverage })
       plugins: { legend: { display: false } }
     }
   });
+}
+
+// issue #155 v2 Phase B — the reference's value-bucketed multi-color bar series +
+// floating custom tooltip (a small white rounded-rect card, dark text, pointing down
+// at the hovered bar) + legend row (dot + label). Built and visually verified in
+// isolation this phase; no page calls this yet — Phase C/D wires it into a real chart.
+const BUCKET_TOKENS = { high: '--accent-lime', medium: '--faint', low: '--line-strong' };
+const BUCKET_FALLBACKS = { high: '#f0f941', medium: '#94a3b8', low: '#c7d2e1' };
+export const BUCKET_LEGEND = [
+  { bucket: 'high', label: 'High' },
+  { bucket: 'medium', label: 'Medium' },
+  { bucket: 'low', label: 'Low' }
+];
+
+function bucketColor(bucket) {
+  return cssVar(BUCKET_TOKENS[bucket], BUCKET_FALLBACKS[bucket]);
+}
+
+// Default tercile split when the caller has no domain-specific thresholds of their own
+// — the lowest third of sorted values is "low", the middle third "medium", the rest
+// "high". Callers with real bucket semantics (e.g. a fixed count threshold) should
+// pass their own `bucketOf(value)` instead of relying on this.
+function defaultBucketOf(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const lowMax = sorted[Math.floor(sorted.length / 3)] ?? 0;
+  const midMax = sorted[Math.floor((sorted.length * 2) / 3)] ?? 0;
+  return (value) => (value <= lowMax ? 'low' : value <= midMax ? 'medium' : 'high');
+}
+
+function positionTooltip(tooltipEl, canvas, context) {
+  const tooltip = context.tooltip;
+  if (!tooltip || tooltip.opacity === 0) {
+    tooltipEl.classList.remove('visible');
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const point = tooltip.dataPoints?.[0];
+  tooltipEl.replaceChildren(
+    el('span', { className: 'chart-tooltip-date', text: point?.label ?? '' }),
+    el('span', { className: 'chart-tooltip-value', text: String(point?.formattedValue ?? '') })
+  );
+  tooltipEl.style.left = `${rect.left + window.scrollX + tooltip.caretX}px`;
+  tooltipEl.style.top = `${rect.top + window.scrollY + tooltip.caretY}px`;
+  tooltipEl.classList.add('visible');
+}
+
+// createBucketedBarChart(canvas, { labels, values, bucketOf }) — `bucketOf` is an
+// optional `(value) => 'high' | 'medium' | 'low'` classifier; defaults to a tercile
+// split over `values` when omitted. The floating tooltip is portaled to
+// `document.body` (not appended near `canvas`) and positioned from
+// `getBoundingClientRect()`, the same "every floating/positioned element is a portal"
+// convention `select.js`/`dropdown.js` already use in this app (`.claude/rules/
+// ui-styling.md`) — a canvas nested inside an animated/transformed or merely
+// non-positioned ancestor would otherwise misposition a sibling-appended tooltip
+// (caught live in this phase's own isolated visual verification: an earlier version
+// appended the tooltip next to the canvas and measured document-root coordinates
+// against a `position: relative`-scoped one, landing it far from the actual bar).
+export async function createBucketedBarChart(canvas, { labels, values, bucketOf }) {
+  const Chart = await loadChartModule();
+  const resolvedBucketOf = bucketOf || defaultBucketOf(values);
+  const colors = values.map((value) => bucketColor(resolvedBucketOf(value)));
+  const { x, y } = axisOptions();
+
+  const tooltipEl = el('div', { className: 'chart-tooltip' });
+  document.body.appendChild(tooltipEl);
+
+  const chart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Value', data: values, backgroundColor: colors, borderRadius: 4 }] },
+    options: {
+      maintainAspectRatio: false,
+      responsive: true,
+      scales: { x, y: { ...y, beginAtZero: true, ticks: { ...y.ticks, precision: 0 } } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: false,
+          external: (context) => positionTooltip(tooltipEl, canvas, context)
+        }
+      }
+    }
+  });
+
+  // Every caller in this app destroys a chart with a plain `chart?.destroy()` on
+  // re-render/unmount (see progress.js) — wrapping `destroy()` to also remove the
+  // portaled tooltip node keeps that exact call site working with no new cleanup step
+  // for callers to remember, matching this app's "always pair a subscription/portal
+  // with teardown" convention (`.claude/rules/ui-styling.md`).
+  const originalDestroy = chart.destroy.bind(chart);
+  chart.destroy = () => {
+    tooltipEl.remove();
+    originalDestroy();
+  };
+
+  return chart;
+}
+
+// createChartLegend([{ bucket, label }]) — the reference's "dot + label" row below a
+// bucketed bar chart. Defaults to BUCKET_LEGEND (high/medium/low) when called with no
+// argument; pass a custom list for a chart with different bucket semantics.
+export function createChartLegend(items = BUCKET_LEGEND) {
+  return el('div', { className: 'chart-legend' }, items.map(({ bucket, label }) =>
+    el('span', { className: 'chart-legend-item' }, [
+      el('span', { className: `chart-legend-dot chart-legend-dot-${bucket}` }),
+      label
+    ])
+  ));
 }
