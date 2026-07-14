@@ -4,7 +4,7 @@
       "numberOfRuns": 1,
       "url": [
         "http://localhost:4173/",
-        "http://localhost:4173/#/signin"
+        "http://localhost:4174/#/signin"
       ],
       "settings": {
         "chromeFlags": "--no-sandbox --headless=new --disable-gpu --disable-dev-shm-usage",
