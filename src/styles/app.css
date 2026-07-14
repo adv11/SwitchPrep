@@ -1817,6 +1817,31 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .daily-todo-nav-badge.danger { background: var(--status-error-bg); color: var(--status-error-text); border-color: var(--status-error-border); }
 .daily-todo-nav-icon { display: inline-flex; flex-shrink: 0; }
 
+/* Review-due nav badge (issue #134) — header pill showing topics due for
+   spaced-repetition review, matching the .daily-todo-nav-badge pattern above.
+   Hidden entirely (not just emptied) when nothing is due — see
+   updateReviewDueBadge in dashboard.js. */
+.review-due-nav-badge[hidden] { display: none; }
+.review-due-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--status-warn-border);
+  background: var(--status-warn-bg);
+  color: var(--status-warn-text);
+  transition: transform 0.15s ease;
+}
+.review-due-nav-badge:hover, .review-due-nav-badge:focus-visible { transform: translateY(-1px); }
+.review-due-nav-badge:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+.review-due-nav-icon { display: inline-flex; flex-shrink: 0; }
+
 /* Roadmap header (issue #6 Phase 4.4) — identity badge + freshness meta row.
    Replaces the old hero-panel's marketing tagline entirely: a returning
    user's daily-driver dashboard doesn't need re-pitching the product on
