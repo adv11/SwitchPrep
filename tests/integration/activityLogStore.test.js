@@ -8,7 +8,9 @@ import { KEYS } from '../../src/services/localStorageKeys.js';
 vi.mock('../../src/services/storage/adapterFactory.js', () => {
   const dbApi = {
     listenActivityLog: vi.fn((_uid, onData) => { onData(null); return () => {}; }),
-    saveActivityLog: vi.fn(() => Promise.resolve())
+    saveActivityLog: vi.fn(() => Promise.resolve()),
+    listenStreakFreezes: vi.fn((_uid, onData) => { onData(null); return () => {}; }),
+    saveStreakFreezes: vi.fn(() => Promise.resolve())
   };
   return { getStorageAdapter: vi.fn(() => dbApi), dbApi };
 });
@@ -20,6 +22,8 @@ beforeEach(() => {
   getStorageAdapter.mockImplementation(() => dbApi);
   dbApi.listenActivityLog.mockImplementation((_uid, onData) => { onData(null); return () => {}; });
   dbApi.saveActivityLog.mockResolvedValue(undefined);
+  dbApi.listenStreakFreezes.mockImplementation((_uid, onData) => { onData(null); return () => {}; });
+  dbApi.saveStreakFreezes.mockResolvedValue(undefined);
 });
 
 describe('subscribe / notify cycle', () => {
