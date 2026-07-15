@@ -57,9 +57,8 @@
             }
           },
           "favoriteRoadmapIds": {
-            ".validate": "newData.numChildren() <= 3",
             "$index": {
-              ".validate": "newData.isString()"
+              ".validate": "newData.isString() && $index.matches(/^[0-2]$/)"
             }
           }
         },

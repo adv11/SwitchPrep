@@ -748,9 +748,20 @@ alongside every other per-user array on a uid transition (`freshStateForNewUid()
 adds the id if under the cap, removes it if already present, and is a no-op — returning
 `{ ok: false, capped: true }` rather than mutating anything — if adding a 4th would
 exceed it; callers must check the return value, same convention as `addItem()`'s
-item-count cap. `firebase/database.rules.json` enforces the same cap server-side via
-`newData.numChildren() <= 3` on the `favoriteRoadmapIds` node — see #122's finding that
-this repo had previously under-enforced server-side caps on similar user-controlled
+item-count cap. `firebase/database.rules.json` enforces the same cap server-side on the
+`favoriteRoadmapIds` node — **not** via `newData.numChildren() <= 3`, which was tried
+first and found to fail to even parse on this repo's pinned `firebase-tools` version
+(`No such method/property 'numChildren'`, reproduced against a real local emulator —
+`.validate` support for `numChildren()` is inconsistent across CLI/rules-engine
+versions). A failed-to-parse rules file doesn't just reject the one path — the whole
+Database Emulator refuses to start, which silently broke every E2E test in CI, not just
+ones touching favorites, since they all depend on the same emulator instance. Fixed with
+the standard index-whitelist idiom instead: `$index.matches(/^[0-2]$/)` restricts a
+write to only index keys `"0"`/`"1"`/`"2"`, capping the array at exactly 3 entries with
+no `numChildren()` dependency. If you add another array-length cap to this file, verify
+it against a real local emulator (`npx firebase emulators:start --only database`) before
+assuming any particular rules-language method actually compiles — see #122's finding
+that this repo had previously under-enforced server-side caps on similar user-controlled
 arrays; don't repeat that gap for a future array field. `deleteCustomRoadmap()` also
 strips the deleted id from `favoriteRoadmapIds` (both in-memory and the Firebase/local
 persistence) so a deleted custom roadmap can never linger as a "favorite" pointing at

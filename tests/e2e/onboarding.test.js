@@ -272,7 +272,10 @@ test.describe('onboarding — favorite roadmaps (issue #177)', () => {
     }
     await page.locator('.template-card', { hasText: 'Marketing' }).locator('.template-card-favorite').click();
 
-    await expect(page.locator('.toast')).toContainText('up to 3');
+    // Scoped by text, not just `.toast` — the "Guest session started…" toast
+    // from sign-up can still be visible/fading out at this point, and a bare
+    // `.toast` locator matches both (strict-mode violation).
+    await expect(page.locator('.toast', { hasText: 'up to 3' })).toBeVisible();
     await expect(page.locator('.template-card', { hasText: 'Marketing' }).locator('.template-card-favorite')).not.toHaveClass(/is-favorite/);
   });
 });
