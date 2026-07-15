@@ -3308,6 +3308,31 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 .notes-status.show { opacity: 1; }
 .notes-status.error { color: var(--status-warn-text); }
 
+/* Issue #180 — timer start/pause control + running total, itemPanel.js and
+   dailyTodoPanel.js. */
+.timer-row { display: flex; align-items: center; gap: 8px; }
+.timer-toggle-btn.active { color: var(--brand); }
+:root[data-theme='dark'] .timer-toggle-btn.active { color: var(--accent-lime); }
+.timer-display { font-size: var(--text-sm); font-variant-numeric: tabular-nums; color: var(--muted); }
+.daily-todo-timer-btn {
+  border: none;
+  background: none;
+  padding: 2px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  font: inherit;
+}
+.daily-todo-timer-btn:hover, .daily-todo-timer-btn.active { color: var(--brand); }
+:root[data-theme='dark'] .daily-todo-timer-btn:hover,
+:root[data-theme='dark'] .daily-todo-timer-btn.active { color: var(--accent-lime); }
+.daily-todo-time-spent {
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
 .resource-list { display: grid; gap: 10px; }
 .resource-card {
   display: grid;
@@ -3405,14 +3430,15 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   .skeleton { animation: none; }
 }
 
-/* 3.4 Tooltip */
+/* 3.4 Tooltip — portaled to document.body (issue #180 follow-up, see
+   tooltip.js's own comment), so `position: fixed` + JS-computed left/top
+   are the only positioning mechanism now; there is no longer a
+   `.tooltip-trigger` descendant relationship to key CSS off of. */
 .tooltip-trigger { position: relative; }
 /* intentional: fixed white text on a fixed dark --neutral-900 tooltip background, same in both themes (issue #116) */
 .tooltip-bubble {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
+  transform: translate(-50%, -100%);
   background: var(--neutral-900);
   color: #fff;
   padding: 4px 8px;
@@ -3420,13 +3446,9 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
   font-size: var(--text-xs);
   white-space: nowrap;
   pointer-events: none;
-  opacity: 0;
   z-index: 60;
-  transition: opacity var(--duration-fast) var(--ease-out);
 }
-.tooltip-trigger:hover .tooltip-bubble,
-.tooltip-trigger:focus-within .tooltip-bubble { opacity: 1; }
-.tooltip-bubble.tooltip-below { bottom: auto; top: calc(100% + 6px); }
+.tooltip-bubble.tooltip-below { transform: translate(-50%, 0); }
 
 /* 3.5 Modal — spring entry on top of the existing .modal-overlay/.modal-card */
 @keyframes modal-card-enter {
