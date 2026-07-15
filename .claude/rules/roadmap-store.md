@@ -756,8 +756,10 @@ strips the deleted id from `favoriteRoadmapIds` (both in-memory and the Firebase
 persistence) so a deleted custom roadmap can never linger as a "favorite" pointing at
 nothing. `onboarding.js`'s picker grid renders a star toggle (`.template-card-favorite`,
 `data-action="favorite"`, the same click-guard convention as the hide/delete/info corner
-buttons — pinned to the opposite top-left corner so it never overlaps whichever of those
-three a given card also has) on every custom and built-in card, and sorts the "Create
+buttons — placed at the same top-right corner, directly left of whichever of those
+three a given card also has, not the top-left corner: top-left was tried first and
+collides with the decorative template icon that also renders there in the card's normal
+content flow, found live via screenshot) on every custom and built-in card, and sorts the "Create
 your own roadmap" action card first (never a favorite target — it isn't a roadmap to
 pick), followed by every pickable card with favorited ones first (`Array#sort`, stable,
 so order is otherwise unchanged). Toggling re-renders the whole visible grid rather than

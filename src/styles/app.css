@@ -1234,13 +1234,16 @@ a.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; bo
 :root[data-theme='dark'] .template-card-info-corner:hover { color: var(--accent-lime); border-color: var(--accent-lime-light-border); }
 
 /* Favorite-roadmap toggle (issue #177) — same 24px circular-corner-button
-   slot/sizing as .template-card-hide/-delete/-info-corner, but pinned to the
-   opposite (top-left) corner so it never overlaps whichever one of those
-   three a given card also renders. */
+   slot/sizing as .template-card-hide/-delete/-info-corner, placed directly
+   left of whichever one of those three a given card also renders (top-right,
+   offset by one button-width + gap). Top-left was tried first but collides
+   with the decorative template icon (createDecorativeIcon()/
+   pickCustomRoadmapIcon()), which also renders at the top-left of the
+   card's normal content flow — found live, screenshotted. */
 .template-card-favorite {
   position: absolute;
   top: 12px;
-  left: 12px;
+  right: 44px;
   width: 24px;
   height: 24px;
   display: grid;
