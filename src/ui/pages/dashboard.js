@@ -26,6 +26,10 @@ import { createEmptyState } from '../components/emptyState.js';
 import { createDecorativeIcon } from '../components/decorativeIcon.js';
 import { KEYS } from '../../services/localStorageKeys.js';
 import { isReviewDue, getReviewDueItems } from '../../core/roadmap/reviewSchedule.js';
+import { isRoadmapComplete, getCompletedPhaseTitles } from '../../core/roadmap/completionCelebration.js';
+import { hasShownRoadmapCelebration, hasShownPhaseCelebration, markRoadmapCelebrationShown, markPhaseCelebrationShown } from '../../services/celebrationShownStore.js';
+import { triggerConfetti } from '../components/confetti.js';
+import { openBadgeShareModal } from '../components/shareModal.js';
 
 // Issue #12B Phase 3 — resource-count badge type breakdown. Ordered so the
 // "most valuable" type (a video worth watching over a plain article, etc.)
@@ -873,6 +877,37 @@ export function renderDashboard(app, { user, store, dailyTodoStore }) {
     ]);
   }
 
+  // Detects a phase/roadmap that has just reached 100% and celebrates it
+  // once (issue #181). `seedOnly` marks an already-complete phase/roadmap
+  // as "shown" without celebrating — used on initial mount and any
+  // structural re-render so a roadmap that was already finished before this
+  // session doesn't celebrate on load; only a done-toggle that actually
+  // crosses into 100% (routed through patchDoneStates) celebrates for real.
+  function checkForCelebration(allItems, { seedOnly = false } = {}) {
+    const uid = user.uid;
+    let confettiFired = false;
+    if (isRoadmapComplete(allItems) && !hasShownRoadmapCelebration(uid, activeTemplateId)) {
+      markRoadmapCelebrationShown(uid, activeTemplateId);
+      if (!seedOnly) confettiFired = celebrate('roadmap', currentTemplate.name, confettiFired);
+    }
+    getCompletedPhaseTitles(allItems).forEach(title => {
+      if (hasShownPhaseCelebration(uid, activeTemplateId, title)) return;
+      markPhaseCelebrationShown(uid, activeTemplateId, title);
+      if (!seedOnly) confettiFired = celebrate('phase', title, confettiFired);
+    });
+  }
+
+  // Returns whether confetti has now fired, so a roadmap-complete and its
+  // simultaneous final phase-complete (a roadmap this small finishes both at
+  // once) share a single burst instead of stacking two .confetti-burst nodes.
+  function celebrate(kind, label, confettiAlreadyFired) {
+    const message = kind === 'roadmap' ? `Roadmap complete! You finished every topic in "${label}".` : `Phase complete: "${label}".`;
+    showToast(message, 'success');
+    if (!confettiAlreadyFired) triggerConfetti();
+    openBadgeShareModal(kind, label).catch(() => {});
+    return true;
+  }
+
   function render(snapshot) {
     const allItems = snapshot.items;
     const filtered = filterItems(allItems, { priority: activeFilter, query: searchQuery });
@@ -967,6 +1002,8 @@ export function renderDashboard(app, { user, store, dailyTodoStore }) {
     // renderPhaseCard) reads knownItemIds to decide which rows are "new"
     // this render, so it can't be updated until after that pass completes.
     knownItemIds = new Set(allItems.map(i => i.id));
+
+    checkForCelebration(allItems, { seedOnly: true });
   }
 
   // A "done" toggle only flips one item's checked state — it never changes which
@@ -1009,6 +1046,8 @@ export function renderDashboard(app, { user, store, dailyTodoStore }) {
       const ring = phaseCard.querySelector('.progress-ring');
       if (ring) ring._setPct(visible.length ? Math.round((visibleDone / visible.length) * 100) : 0);
     });
+
+    checkForCelebration(allItems);
   }
 
   function handleSnapshot(snapshot) {
