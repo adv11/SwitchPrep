@@ -55,6 +55,11 @@
             "$index": {
               ".validate": "newData.isString()"
             }
+          },
+          "favoriteRoadmapIds": {
+            "$index": {
+              ".validate": "newData.isString() && $index.matches(/^[0-2]$/)"
+            }
           }
         },
         "dailyTodos": {

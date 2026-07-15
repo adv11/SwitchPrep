@@ -736,6 +736,46 @@ closes the guide and calls the same `handleImport()` the "Import roadmap" card u
 do not let it drift back to describing a manual copy-paste-into-an-AI-chat workflow now
 that real automated import exists.
 
+**Favorite roadmaps — `favoriteRoadmapIds` (issue #177).** A parallel per-user array,
+same shape/persistence precedent as `hiddenTemplateIds` immediately above: up to
+`MAX_FAVORITE_ROADMAPS` (3, exported from `roadmapStore.js`) roadmap ids, no distinction
+between a built-in template id and a `croadmap-...` custom id (matching how
+`startedTemplateIds` already treats them uniformly), persisted to
+`users/{uid}/meta/favoriteRoadmapIds` plus a local `KEYS.FAVORITE_ROADMAPS` fallback —
+resolved in `resolveMetaExtras()` (remote wins, falling back to the local blob) and reset
+alongside every other per-user array on a uid transition (`freshStateForNewUid()`,
+`clearLocal()` — see the "Sign-out contract" below). `store.toggleFavoriteRoadmap(id)`
+adds the id if under the cap, removes it if already present, and is a no-op — returning
+`{ ok: false, capped: true }` rather than mutating anything — if adding a 4th would
+exceed it; callers must check the return value, same convention as `addItem()`'s
+item-count cap. `firebase/database.rules.json` enforces the same cap server-side on the
+`favoriteRoadmapIds` node — **not** via `newData.numChildren() <= 3`, which was tried
+first and found to fail to even parse on this repo's pinned `firebase-tools` version
+(`No such method/property 'numChildren'`, reproduced against a real local emulator —
+`.validate` support for `numChildren()` is inconsistent across CLI/rules-engine
+versions). A failed-to-parse rules file doesn't just reject the one path — the whole
+Database Emulator refuses to start, which silently broke every E2E test in CI, not just
+ones touching favorites, since they all depend on the same emulator instance. Fixed with
+the standard index-whitelist idiom instead: `$index.matches(/^[0-2]$/)` restricts a
+write to only index keys `"0"`/`"1"`/`"2"`, capping the array at exactly 3 entries with
+no `numChildren()` dependency. If you add another array-length cap to this file, verify
+it against a real local emulator (`npx firebase emulators:start --only database`) before
+assuming any particular rules-language method actually compiles — see #122's finding
+that this repo had previously under-enforced server-side caps on similar user-controlled
+arrays; don't repeat that gap for a future array field. `deleteCustomRoadmap()` also
+strips the deleted id from `favoriteRoadmapIds` (both in-memory and the Firebase/local
+persistence) so a deleted custom roadmap can never linger as a "favorite" pointing at
+nothing. `onboarding.js`'s picker grid renders a star toggle (`.template-card-favorite`,
+`data-action="favorite"`, the same click-guard convention as the hide/delete/info corner
+buttons — placed at the same top-right corner, directly left of whichever of those
+three a given card also has, not the top-left corner: top-left was tried first and
+collides with the decorative template icon that also renders there in the card's normal
+content flow, found live via screenshot) on every custom and built-in card, and sorts the "Create
+your own roadmap" action card first (never a favorite target — it isn't a roadmap to
+pick), followed by every pickable card with favorited ones first (`Array#sort`, stable,
+so order is otherwise unchanged). Toggling re-renders the whole visible grid rather than
+patching a single card in place, since a toggle can also move where the card sits.
+
 **"blank" template retirement and migration (`roadmapStore.js`, `src/data/templates/`,
 issue #4 follow-up).** Once manual roadmap creation (CRUD, above) and AI-assisted import
 (above) both existed, the "Start blank" built-in template — four fixed, uneditable
