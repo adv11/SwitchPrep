@@ -19,6 +19,24 @@ describe('StorageAdapter base contract', () => {
     expect(adapter.destroy()).toBeUndefined();
   });
 
+  it('updateRoadmapItemFields default falls back to a read-modify-write over the whole roadmap (issue #184)', async () => {
+    const adapter = new StorageAdapter();
+    adapter.getRoadmap = async () => ({ items: { a: { id: 'a', title: 'A', done: false } } });
+    let savedPayload = null;
+    adapter.saveRoadmap = async (_uid, _templateId, payload) => { savedPayload = payload; };
+
+    const result = await adapter.updateRoadmapItemFields('uid', 'tpl', 'a', { done: true });
+
+    expect(result).toEqual({ id: 'a', title: 'A', done: true });
+    expect(savedPayload.items.a).toEqual({ id: 'a', title: 'A', done: true });
+  });
+
+  it('updateRoadmapItemFields default resolves null when the item does not exist', async () => {
+    const adapter = new StorageAdapter();
+    adapter.getRoadmap = async () => ({ items: {} });
+    await expect(adapter.updateRoadmapItemFields('uid', 'tpl', 'missing', { done: true })).resolves.toBeNull();
+  });
+
   it('provides a safe no-op default for daily todos (issue #56)', async () => {
     const adapter = new StorageAdapter();
     let received = 'unset';

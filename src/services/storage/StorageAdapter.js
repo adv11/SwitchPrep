@@ -30,6 +30,24 @@ export class StorageAdapter {
     throw new Error('not implemented');
   }
 
+  // Targeted per-item write for setItemDoneInTemplate()'s cold (never-cached)
+  // cross-roadmap path (issue #184) — writing only this item's own fields,
+  // rather than replacing the whole roadmap's `items` map the way saveRoadmap()
+  // does, means two concurrent calls for two different itemIds on the same
+  // not-yet-cached roadmap can no longer clobber each other's completion.
+  // Resolves `null` if the item isn't present remotely (caller falls back to a
+  // full saveRoadmap() in that case, since there's no existing remote node to
+  // merge into). Default implementation is a plain read-modify-write over the
+  // whole roadmap — correct but not itself race-free, fine for a single-writer
+  // backend; FirebaseAdapter overrides this with a real scoped multi-path update().
+  async updateRoadmapItemFields(uid, templateId, itemId, fields) {
+    const roadmap = await this.getRoadmap(uid, templateId);
+    if (!roadmap?.items?.[itemId]) return null;
+    const nextItems = { ...roadmap.items, [itemId]: { ...roadmap.items[itemId], ...fields } };
+    await this.saveRoadmap(uid, templateId, { ...roadmap, items: nextItems, updatedAt: this.now() });
+    return nextItems[itemId];
+  }
+
   /** One-time read of the user's roadmap-selection/onboarding meta. */
   getMeta(_uid) {
     throw new Error('not implemented');

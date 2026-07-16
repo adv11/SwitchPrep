@@ -101,6 +101,35 @@ export class FirebaseAdapter extends StorageAdapter {
     return snapshot.exists() ? snapshot.val() : null;
   }
 
+  // Overrides StorageAdapter's read-modify-write default with a real scoped
+  // write (issue #184): a multi-path update() keyed by `items/{itemId}/{field}`
+  // touches only this item's own children, never the sibling `items` map or
+  // any other item's node — so it can't race with a concurrent call for a
+  // different itemId the way a full saveRoadmap({ items: nextItems }) can.
+  // Resolves null without writing anything if the item doesn't exist remotely
+  // yet, so the caller can fall back to a full saveRoadmap() instead of
+  // creating a partial item node missing its other fields.
+  async updateRoadmapItemFields(uid, templateId, itemId, fields) {
+    const existing = await this.getRoadmapItem(uid, templateId, itemId);
+    if (!existing) return null;
+    const base = `users/${uid}/roadmaps/${templateId}`;
+    const updates = { [`${base}/updatedAt`]: this.now() };
+    for (const [key, value] of Object.entries(fields)) {
+      updates[`${base}/items/${itemId}/${key}`] = value;
+    }
+    await withTimeout(update(ref(database), updates), FIREBASE_TIMEOUT_MS, 'Timed out updating roadmap item in Firebase');
+    return { ...existing, ...fields };
+  }
+
+  async getRoadmapItem(uid, templateId, itemId) {
+    const snapshot = await withTimeout(get(this.roadmapItemRef(uid, templateId, itemId)), FIREBASE_TIMEOUT_MS, 'Timed out loading roadmap item from Firebase');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  roadmapItemRef(uid, templateId, itemId) {
+    return ref(database, `users/${uid}/roadmaps/${templateId}/items/${itemId}`);
+  }
+
   async getLegacyRoadmap(uid) {
     const snapshot = await withTimeout(get(this.legacyRoadmapRef(uid)), FIREBASE_TIMEOUT_MS, 'Timed out loading legacy roadmap from Firebase');
     return snapshot.exists() ? snapshot.val() : null;
