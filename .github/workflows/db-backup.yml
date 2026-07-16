@@ -1,8 +1,13 @@
 name: Realtime Database backup
 
-# Daily snapshot of the entire Firebase Realtime Database, kept as a GitHub
-# Actions artifact. See docs/architecture.md's "Database backup & disaster
-# recovery" section for the retention policy and restore procedure (issue #130).
+# Daily snapshot of the entire Firebase Realtime Database, encrypted and kept
+# as a GitHub Actions artifact. This repo is public, so artifacts are
+# downloadable by anyone with read access — the snapshot contains every
+# user's roadmap/Daily Todos/activity-log/feedback data, so it is encrypted
+# with BACKUP_ENCRYPTION_KEY before upload; the plaintext JSON never touches
+# disk as an uploaded artifact. See docs/architecture.md's "Database backup &
+# disaster recovery" section for the retention policy and restore procedure
+# (issue #130).
 
 on:
   schedule:
@@ -25,12 +30,13 @@ jobs:
         id: ready
         env:
           SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
         run: |
-          if [ -n "$SERVICE_ACCOUNT" ] && [ -n "${{ vars.FIREBASE_PROJECT_ID }}" ]; then
+          if [ -n "$SERVICE_ACCOUNT" ] && [ -n "$ENCRYPTION_KEY" ] && [ -n "${{ vars.FIREBASE_PROJECT_ID }}" ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
             echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "⚠️  FIREBASE_SERVICE_ACCOUNT secret or FIREBASE_PROJECT_ID variable not set — backup skipped"
+            echo "⚠️  FIREBASE_SERVICE_ACCOUNT/BACKUP_ENCRYPTION_KEY secret or FIREBASE_PROJECT_ID variable not set — backup skipped"
           fi
 
       - name: Write service account key
@@ -54,7 +60,19 @@ jobs:
             --project "${{ vars.FIREBASE_PROJECT_ID }}" \
             --output "$SNAPSHOT_NAME"
 
-      - name: Upload snapshot artifact
+      - name: Encrypt snapshot
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          openssl enc -aes-256-cbc -pbkdf2 -salt \
+            -in "$SNAPSHOT_NAME" \
+            -out "$SNAPSHOT_NAME.enc" \
+            -pass env:ENCRYPTION_KEY
+          rm -f "$SNAPSHOT_NAME"
+          echo "SNAPSHOT_NAME=$SNAPSHOT_NAME.enc" >> "$GITHUB_ENV"
+
+      - name: Upload encrypted snapshot artifact
         if: steps.ready.outputs.ok == 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -63,7 +81,10 @@ jobs:
           # Daily snapshots kept 30 days; see docs/architecture.md for the
           # documented long-term retention policy (weekly snapshots saved
           # manually by whoever downloads them, until this graduates to a
-          # Cloud Storage bucket with lifecycle rules).
+          # private Cloud Storage bucket with lifecycle rules). Repo is
+          # public, so this file is AES-256 encrypted (previous step) —
+          # only the plaintext-JSON risk is mitigated here, the artifact
+          # itself is still publicly downloadable as ciphertext.
           retention-days: 30
 
       - name: Clean up credentials
