@@ -73,10 +73,15 @@ test.describe('two custom roadmaps imported back-to-back survive a sign-out/sign
     await page.locator('.modal-overlay [data-action="confirm"]').click();
     await expect(page).toHaveURL(/#\/signin/, { timeout: 10_000 });
 
+    // Signing back in with an already-onboarded account routes straight to
+    // /app (main.js's own routing — onboardingDone is already true), not
+    // back to /onboarding, so wait for either and then navigate to the
+    // picker explicitly to check both cards.
     await page.locator('input[type="email"]').fill(uniqueEmail);
     await page.locator('input[type="password"]').fill(password);
     await page.locator('[type="submit"]').click();
-    await expect(page).toHaveURL(/#\/onboarding/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/#\/(onboarding|app)/, { timeout: 15_000 });
+    await page.goto('/#/onboarding');
 
     // Both roadmaps must still be listed as pickable cards — neither id was
     // silently dropped from meta.startedTemplateIds/meta.customRoadmaps.
