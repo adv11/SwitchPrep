@@ -3974,7 +3974,7 @@ longer silently drift from the repo with no CI signal. See
 `tests/integration/roadmapStore.test.js` for the regression tests (verified to fail
 against the pre-fix code).
 
-### 2026-07-17 — PR #TBD — CI enforcement of sw.js CACHE_VERSION + shorter static-asset cache lifetime (issue #185)
+### 2026-07-17 — PR #217 — CI enforcement of sw.js CACHE_VERSION + shorter static-asset cache lifetime (issue #185)
 
 This app has no build step and no content-hashed filenames (a deliberate, repeatedly-
 revisited decision — see issue #137's own "Out of scope" section), so `firebase.json`'s
