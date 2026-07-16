@@ -717,6 +717,55 @@ adapters`.
 
 ---
 
+## 6a. Database backup & disaster recovery
+
+`.github/workflows/db-backup.yml` (issue #130) runs a daily scheduled export (09:00 UTC
+cron, plus `workflow_dispatch` for manual/on-demand runs) of the entire Firebase
+Realtime Database via `firebase database:get /`, authenticated with the same
+`FIREBASE_SERVICE_ACCOUNT` secret already used by `deploy.yml` — evaluated against a
+narrower-scoped service account and kept as the existing one since it already has the
+Realtime Database read access a backup needs, and provisioning a second credential
+would be extra secret-rotation surface for no real isolation benefit (a backup job
+compromised via the same secret as deploy is no worse than deploy itself being
+compromised). Each snapshot is uploaded as a GitHub Actions build artifact named
+`rtdb-backup-<UTC timestamp>.json` with `retention-days: 30` — at this app's data size
+(~20-30KB per user, per issue #5's research), a daily JSON snapshot is trivially cheap
+and a Cloud Storage bucket is deferred until real usage numbers justify the added
+infrastructure. Retention policy: GitHub Actions retains the last 30 daily snapshots
+automatically; anyone wanting longer-term (e.g. weekly-for-a-year) retention should
+download and archive a snapshot manually until this graduates to a bucket with
+lifecycle rules. If the workflow itself fails, GitHub's own workflow-failure
+notification (email/GitHub UI, to whoever has notifications enabled for this repo) is
+the alert — no separate alerting infrastructure was built for this.
+
+**Restore procedure** (manual — not automated; see issue #130's scope):
+
+1. Download the snapshot artifact from the failed/target workflow run (Actions tab →
+   run → Artifacts).
+2. **Freeze writes first.** Don't restore over live traffic — either put the app in
+   maintenance mode or temporarily tighten `firebase/database.rules.json` to
+   read-only, deploy that, confirm no writes are in flight, then proceed.
+3. Restore with the Firebase CLI, authenticated as an operator with write access to
+   the target project:
+   ```
+   firebase database:set / rtdb-backup-<timestamp>.json --project <project-id>
+   ```
+   This **overwrites the entire database** with the snapshot's contents — there is no
+   partial/merge restore. Double-check the project ID before running it.
+4. Revert any temporary rules lockdown from step 2 and redeploy the real
+   `firebase/database.rules.json`.
+5. Spot-check a few known user records (roadmap, Daily Todos) against the snapshot to
+   confirm the restore matches, before announcing the incident resolved.
+
+Before relying on this in a real incident, run the dry run once against a throwaway
+Firebase project: trigger the workflow via `workflow_dispatch`, download the resulting
+artifact, then run the `database:set` command above against that same throwaway
+project and confirm the data matches. This has not yet been performed as of the
+workflow's introduction (issue #130) — do it before the first real incident, not
+during one.
+
+---
+
 ## 7. Issue templates & enforcement
 
 `.github/ISSUE_TEMPLATE/` contains four GitHub issue forms:
@@ -3836,3 +3885,15 @@ network calls or tool-blocking; that file is already gitignored (`.claude/settin
 "machine-specific, not a repo convention") so the hook doesn't propagate to other clones.
 Regenerate the graph with `graphify update .` after significant code changes, or re-run
 the full `/graphify .` pipeline for a from-scratch rebuild.
+
+### 2026-07-16 — Issue #130 — Daily Realtime Database backup workflow
+
+Added `.github/workflows/db-backup.yml`, a new scheduled GitHub Actions workflow (daily
+cron + `workflow_dispatch`) that exports the entire Firebase Realtime Database via
+`firebase database:get /` and uploads it as a 30-day-retention build artifact. Closes
+the operational gap where the only existing backup path was issue #18's user-initiated,
+per-user export — there was no operator-side recovery mechanism for accidental rules
+deploys, compromised credentials, or platform incidents. Reuses the existing
+`FIREBASE_SERVICE_ACCOUNT` deploy secret rather than provisioning a second one (see
+§6a for the reasoning). See §6a "Database backup & disaster recovery" for the full
+retention policy and restore procedure.

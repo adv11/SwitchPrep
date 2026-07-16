@@ -135,7 +135,7 @@ Distinct from `CHANGELOG.md` (user-facing). The CI `pr-checklist` job (`.github/
 
 ## Deploying
 
-Every push to `main` auto-deploys to Firebase Hosting via `.github/workflows/deploy.yml`. Every PR gets a temporary 7-day preview URL posted as a PR comment.
+Every push to `main` auto-deploys to Firebase Hosting via `.github/workflows/deploy.yml`. Every PR gets a temporary 7-day preview URL posted as a PR comment. A daily scheduled workflow (`.github/workflows/db-backup.yml`, issue #130) exports the full Realtime Database as a build artifact — see `docs/architecture.md` §6a for the retention policy and restore procedure.
 
 **For a manual deploy:**
 ```bash
