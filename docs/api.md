@@ -414,6 +414,7 @@ overridden; optional ones have safe defaults.
 | `deleteRoadmap` | `(uid, templateId) => Promise<void>` | **Required.** Only ever called for a custom roadmap the user has explicitly deleted. |
 | `getMeta` | `(uid) => Promise<object \| null>` | **Required.** One-time read of the user's roadmap-selection/onboarding meta. |
 | `saveMeta` | `(uid, meta: object) => Promise<void>` | **Required.** Partial update, never a full overwrite. |
+| `updateRoadmapItemFields` | `(uid, templateId, itemId, fields: object) => Promise<object \| null>` | Optional — default falls back to a read-modify-write over the whole roadmap (`getRoadmap` + `saveRoadmap`), resolving `null` if the item doesn't exist. `FirebaseAdapter` overrides with a real scoped multi-path `update()` touching only that item's own fields, so it can't race with a concurrent write to a different item (issue #184). Used by `roadmapStore.js`'s `setItemDoneInTemplate()` cold-template branch instead of a full `saveRoadmap({ items })` call. |
 | `getLegacyRoadmap` | `(uid) => Promise<object \| null>` | Optional — default resolves `null`. Only `FirebaseAdapter` has pre-issue-#58 legacy data to migrate from. |
 | `now` | `() => unknown` | Optional — default `Date.now()`. Adapter-specific write timestamp (Firebase's `serverTimestamp()` sentinel — a future second backend controls its own representation). |
 | `destroy` | `() => void` | Optional — default no-op. Cleanup hook for a backend with open listeners/timers. |

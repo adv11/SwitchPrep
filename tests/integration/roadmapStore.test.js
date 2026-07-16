@@ -19,6 +19,7 @@ vi.mock('../../src/services/storage/adapterFactory.js', () => {
     getRoadmap: vi.fn(() => Promise.resolve(null)),
     getLegacyRoadmap: vi.fn(() => Promise.resolve(null)),
     deleteRoadmap: vi.fn(() => Promise.resolve()),
+    updateRoadmapItemFields: vi.fn(() => Promise.resolve(null)),
     now: vi.fn(() => null),
   };
   return { getStorageAdapter: vi.fn(() => dbApi), dbApi };
@@ -45,6 +46,7 @@ beforeEach(() => {
   dbApi.getRoadmap.mockResolvedValue(null);
   dbApi.getLegacyRoadmap.mockResolvedValue(null);
   dbApi.deleteRoadmap.mockResolvedValue(undefined);
+  dbApi.updateRoadmapItemFields.mockResolvedValue(null);
   dbApi.now.mockReturnValue(null);
 });
 
@@ -394,6 +396,44 @@ describe('onCompletionToggle (issue #8)', () => {
 
     expect(result.ok).toBe(true);
     expect(onCompletionToggle).toHaveBeenCalledWith(1);
+  });
+
+  it('two concurrent setItemDoneInTemplate calls for different items on a cold, uncached roadmap both persist via scoped per-item writes instead of racing a full items overwrite (issue #184)', async () => {
+    const onCompletionToggle = vi.fn();
+    const store = createRoadmapStore({ onCompletionToggle });
+    await store.setUser({ uid: 'u1' });
+    dbApi.getMeta.mockResolvedValue({ onboardingDone: true, activeTemplateId: 'java-backend', startedTemplateIds: ['java-backend', 'frontend'] });
+    dbApi.getRoadmap.mockResolvedValue({
+      version: 1,
+      items: {
+        'item-a': { id: 'item-a', title: 'A', done: false, deleted: false },
+        'item-b': { id: 'item-b', title: 'B', done: false, deleted: false }
+      }
+    });
+    // Simulates the race: updateRoadmapItemFields resolves after an artificial
+    // delay so both calls' scoped writes are genuinely in flight at once —
+    // against the old code (a full saveRoadmap({ items: nextItems }) built from
+    // a stale read) whichever call's write landed last would silently drop the
+    // other item's completion.
+    dbApi.updateRoadmapItemFields.mockImplementation((uid, templateId, itemId, fields) =>
+      new Promise(resolve => setTimeout(() => resolve({ id: itemId, ...fields }), 5))
+    );
+
+    const [resultA, resultB] = await Promise.all([
+      store.setItemDoneInTemplate('frontend', 'item-a', true),
+      store.setItemDoneInTemplate('frontend', 'item-b', true)
+    ]);
+
+    expect(resultA.ok).toBe(true);
+    expect(resultB.ok).toBe(true);
+    // Neither completion goes through a full items-map overwrite — each is a
+    // scoped write to its own item path, so one call can never clobber the
+    // other's completion via a stale saveRoadmap() snapshot.
+    expect(dbApi.saveRoadmap).not.toHaveBeenCalled();
+    expect(dbApi.updateRoadmapItemFields).toHaveBeenCalledWith('u1', 'frontend', 'item-a', expect.objectContaining({ done: true }));
+    expect(dbApi.updateRoadmapItemFields).toHaveBeenCalledWith('u1', 'frontend', 'item-b', expect.objectContaining({ done: true }));
+    expect(onCompletionToggle).toHaveBeenCalledWith(1);
+    expect(onCompletionToggle).toHaveBeenCalledTimes(2);
   });
 
   it('does not fire when setItemDoneInTemplate fails to find the item', async () => {
