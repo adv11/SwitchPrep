@@ -40,11 +40,24 @@ function roundedRect(ctx, { x, y, width, height, radius }) {
   ctx.closePath();
 }
 
+// Alpenglow gold→rose (issue #155 v2/#206), replacing the old pre-Alpenglow
+// teal `--brand-500/600/700` gradient this card had kept using on its own —
+// real feedback (screenshot): the share card was the one remaining surface
+// still showing the retired teal identity after the rest of the app moved
+// to gold/rose. Uses `--color-brand-gold-ink`/`--color-brand-rose-ink` (the
+// same darkened variants `.template-card-ai-badge` etc. already use for
+// text-on-light-fill contrast), not the base `--color-brand-gold`/
+// `--color-brand-rose` tokens — this card hosts white text throughout, and
+// the base tokens are light/mid-toned (tuned for hosting *dark* ink text,
+// e.g. `.btn-primary`), which would fail contrast for white text the same
+// way the old dark teal-700→teal-500 stops never did. The `-ink` variants
+// are dark enough to preserve that same white-on-dark contrast while still
+// reading unmistakably as this app's actual brand gradient, not a
+// coincidentally similar dark color.
 function drawBackground(ctx) {
   const gradient = ctx.createLinearGradient(0, 0, CARD_WIDTH, CARD_HEIGHT);
-  gradient.addColorStop(0, cssVar('--brand-700', '#0d5c56'));
-  gradient.addColorStop(0.55, cssVar('--brand-600', '#0f766e'));
-  gradient.addColorStop(1, cssVar('--brand-500', '#14b8a6'));
+  gradient.addColorStop(0, cssVar('--color-brand-gold-ink', '#775a24'));
+  gradient.addColorStop(1, cssVar('--color-brand-rose-ink', '#6a333b'));
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
 }
