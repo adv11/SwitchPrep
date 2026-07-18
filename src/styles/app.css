@@ -34,6 +34,30 @@
   --color-p2: var(--color-brand-gold);
   --color-p3: var(--color-text-faint);
 
+  /* issue #206 follow-up (found by CI's axe accessibility gate, not the
+     original spec) — --color-brand-gold/--color-warning are ~L0.3-0.42
+     luminance, which can never reach 4.5:1 text contrast against this
+     theme's near-white --color-bg/--color-surface (max possible is ~2.1-2.8,
+     confirmed live by axe on .eyebrow/.landing-proof-text/
+     .review-due-nav-badge). These darkened "-ink" variants are for TEXT use
+     only wherever gold/warning would otherwise sit directly on this theme's
+     light surfaces — never for borders/icons/fills, which keep the vivid
+     base token. Dark theme's block below aliases these straight back to the
+     base tokens, since dark theme's near-black surfaces already pass at
+     7-13:1 with no darkening needed — verified per the same live-contrast
+     discipline `.claude/rules/ui-styling.md` already documents for every
+     other token pairing in this file. --color-p3-ink reuses
+     --color-text-muted rather than a mix, for the same reason
+     --color-text-faint itself fails (2.83:1) as real text color against
+     these surfaces — --color-text-muted is already a verified-safe token,
+     not a new derivation. */
+  --color-brand-gold-ink: color-mix(in srgb, var(--color-brand-gold) 55%, black);
+  --color-warning-ink:    color-mix(in srgb, var(--color-warning) 55%, black);
+  --color-p0-ink: var(--color-danger);
+  --color-p1-ink: var(--color-warning-ink);
+  --color-p2-ink: var(--color-brand-gold-ink);
+  --color-p3-ink: var(--color-text-muted);
+
   /* issue #206 — no direct spec equivalent for these three roles (a
      translucent glass-panel surface/border pair, and a decorative low-alpha
      ambient glow) — kept under their pre-#206 names, retuned to the new
@@ -46,6 +70,21 @@
   /* issue #206 — decorative focus-ring glow, no direct spec token name;
      retuned from teal/lime to gold, same alpha as before (0.2). */
   --focus: rgba(217, 164, 65, 0.2);
+
+  /* issue #206 follow-up — fixed, theme-invariant dark text for a solid
+     var(--color-brand-gold) FILL (buttons: .btn-primary/.btn-cta), not the
+     lighter-but-still-text-role --color-brand-gold-ink above. Gold is a
+     similar mid-lightness value in both themes (#D9A441 light / #E8B457
+     dark), so a theme-relative var(--color-text) — dark in light theme,
+     near-white in dark theme — passes in light theme but fails badly in
+     dark theme (verified 1.62:1 live via axe on .btn-cta, well under the
+     4.5:1 minimum). This literal (equal to light theme's --color-text) was
+     verified 6.8:1 against light-theme gold and 8.1:1 against dark-theme
+     gold — comfortably passing in both without a per-theme override, the
+     same "fixed color on a background that doesn't track site theme"
+     pattern already used by .brand-mark/.modal-overlay elsewhere in this
+     file. */
+  --color-ink-on-gold: #2A2420;
 
   --font-body:    'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-display: 'Fraunces', Georgia, serif;
@@ -204,6 +243,16 @@
   --color-p1: var(--color-warning);
   --color-p2: var(--color-brand-gold);
   --color-p3: var(--color-text-faint);
+
+  /* issue #206 follow-up — passthrough, not darkened: dark theme's gold/
+     warning already clear 7-13:1 against these near-black surfaces (see the
+     light-theme block's comment above for the full contrast writeup). */
+  --color-brand-gold-ink: var(--color-brand-gold);
+  --color-warning-ink:    var(--color-warning);
+  --color-p0-ink: var(--color-danger);
+  --color-p1-ink: var(--color-warning-ink);
+  --color-p2-ink: var(--color-brand-gold-ink);
+  --color-p3-ink: var(--color-text-muted);
 
   --surface-glass: rgba(18, 18, 18, 0.88);
   --border-glass: rgba(58, 49, 41, 0.8);
@@ -365,14 +414,14 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   font-weight: 700;
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  color: var(--color-brand-gold);
+  color: var(--color-brand-gold-ink);
 }
 .eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-brand-gold); flex-shrink: 0; }
 /* issue #155 v2 Phase C — landing/auth/shell recolor: swap the ZeBeyond mint accent for
    the v2 lime accent on the specific classes scoped to those three areas (this class is
    only ever used by landing.js/authMarketingPanel.js — see ui-styling.md). Falls back to
    --color-brand-gold in light theme, unchanged (no v2 reference material exists there). */
-:root[data-theme='dark'] .eyebrow { color: var(--color-brand-gold); }
+:root[data-theme='dark'] .eyebrow { color: var(--color-brand-gold-ink); }
 :root[data-theme='dark'] .eyebrow-dot { background: var(--color-brand-gold); }
 
 /* Gradient-filled headline text, for one accent phrase inside an otherwise
@@ -407,7 +456,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   border: 1px solid var(--color-border);
   color: var(--color-text-muted);
 }
-.tag-chip-accent { background: var(--color-warning-bg); border-color: var(--color-border-strong); color: var(--color-brand-gold); }
+.tag-chip-accent { background: var(--color-warning-bg); border-color: var(--color-border-strong); color: var(--color-brand-gold-ink); }
 
 /* Small rounded-square icon container for card headers (the icon-topped
    case-study-card pattern) — wraps a createIcon()/createDecorativeIcon()
@@ -444,7 +493,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   border-radius: var(--radius-full);
   border: 1px solid transparent;
   background: var(--color-brand-gold);
-  color: var(--color-text);
+  color: var(--color-ink-on-gold);
   font-weight: var(--font-weight-bold);
   font-size: var(--text-sm);
   text-decoration: none;
@@ -522,12 +571,16 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .btn:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 2px; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 
-/* Primary — filled gold, dark text in both themes (Alpenglow gold hosts dark
-   text at both its light- and dark-theme lightness, unlike the old
-   teal/lime scheme's cross-theme flip — see the token-layer PR). */
+/* Primary — filled gold, fixed dark text in both themes. Originally used
+   var(--color-text) here (theme-relative), which passes in light theme but
+   fails badly in dark theme since --color-text flips to near-white while
+   gold stays a similar mid-lightness in both themes — caught live by axe on
+   the visually-identical .btn-cta (1.62:1) and fixed at the token level via
+   --color-ink-on-gold; see that token's comment above for the full
+   contrast writeup. */
 .btn-primary {
   background: var(--color-brand-gold);
-  color: var(--color-text);
+  color: var(--color-ink-on-gold);
   border-color: var(--color-brand-gold);
   box-shadow: var(--shadow-sm);
 }
@@ -681,10 +734,10 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 
 .reset-success-msg { display: flex; gap: 10px; align-items: flex-start; font-size: var(--text-base); color: var(--color-text); line-height: 1.5; }
 /* intentional: fixed white checkmark on a --color-brand-gold-colored badge, same in both themes (issue #116) */
-.reset-success-icon { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--color-brand-gold); color: #fff; font-size: 13px; font-weight: 900; }
+.reset-success-icon { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--color-brand-gold); color: var(--color-ink-on-gold); font-size: 13px; font-weight: 900; }
 /* issue #155 v2 Phase D3 (full completion pass) — same "white text fails on lime"
    pattern as .import-step-badge: swaps both fill and text color, not just the fill. */
-:root[data-theme='dark'] .reset-success-icon { background: var(--color-brand-gold); color: var(--color-text); }
+:root[data-theme='dark'] .reset-success-icon { background: var(--color-brand-gold); }
 
 /* Auth pages — issue #6 Phase 5.1: .auth-page is a two-column split
    (marketing panel + form) above the ≤1024px breakpoint tier, single-column
@@ -1417,7 +1470,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 /* issue #155 v2 Phase D3 (full completion pass) — the reference explicitly calls out
    "avatar-ring accents" as one of its lime use cases. Same white-text-fails-on-lime
    swap as .import-step-badge/.reset-success-icon — both fill and text change. */
-:root[data-theme='dark'] .avatar { background: var(--color-brand-gold); color: var(--color-text); }
+:root[data-theme='dark'] .avatar { background: var(--color-brand-gold); }
 .avatar-sm { width: 28px; height: 28px; font-size: var(--text-xs); }
 .avatar-md { width: 36px; height: 36px; font-size: var(--text-sm); }
 .avatar-lg { width: 56px; height: 56px; font-size: var(--text-lg); }
@@ -1963,7 +2016,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    hosts near-black text, never white), so dark theme reads `var(--color-bg)` here instead
    of the fixed white the light-theme/pre-v2 rule above uses. Falls back to the
    original brand+white pairing in light theme. */
-:root[data-theme='dark'] .import-step-badge { background: var(--color-brand-gold); color: var(--color-text); }
+:root[data-theme='dark'] .import-step-badge { background: var(--color-brand-gold); }
 .field-hint { font-size: 12px; color: var(--color-text-muted); margin-top: -4px; }
 .import-options { display: grid; gap: 14px; padding: 14px; background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
 .import-option-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -2116,7 +2169,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   cursor: pointer;
   border: 1px solid var(--color-warning);
   background: var(--color-warning-bg);
-  color: var(--color-warning);
+  color: var(--color-warning-ink);
   transition: transform 0.15s ease;
 }
 .review-due-nav-badge:hover, .review-due-nav-badge:focus-visible { transform: translateY(-1px); }
@@ -2275,7 +2328,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 /* issue #206 §6 — de-emphasized "still at zero" state: smaller, muted, less bold than
    a real earned number, so a fresh roadmap's stat strip doesn't read as a wall of loud
    "0"s. Paired with an action-oriented .kpi-tile-delta caption at each call site. */
-.kpi-tile-number-zero { font-size: var(--text-xl); font-weight: var(--font-weight-semibold); color: var(--color-text-faint); }
+.kpi-tile-number-zero { font-size: var(--text-xl); font-weight: var(--font-weight-semibold); color: var(--color-text-muted); }
 .kpi-tile-delta { font-size: var(--text-xs); color: var(--color-text-muted); font-weight: 600; }
 /* issue #155 v2 Phase D1 — progress.js's stat strip: a smaller inline caption after
    the number (e.g. "/ 200", "days"), reusing .kpi-tile-number's flex row via a
@@ -2385,10 +2438,10 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .filter-chip.active { background: var(--color-text); border-color: var(--color-text); color: var(--color-bg); }
 /* issue #206 §3.6 — same tinted-pill treatment as .badge.P0-P3 above, so the
    two priority-indicator patterns in the app read as one consistent system. */
-.filter-chip[data-p="P0"].active { background: color-mix(in srgb, var(--color-p0) 15%, transparent); border-color: var(--color-p0); color: var(--color-p0); }
-.filter-chip[data-p="P1"].active { background: color-mix(in srgb, var(--color-p1) 15%, transparent); border-color: var(--color-p1); color: var(--color-p1); }
-.filter-chip[data-p="P2"].active { background: color-mix(in srgb, var(--color-p2) 15%, transparent); border-color: var(--color-p2); color: var(--color-p2); }
-.filter-chip[data-p="P3"].active { background: color-mix(in srgb, var(--color-p3) 15%, transparent); border-color: var(--color-p3); color: var(--color-p3); }
+.filter-chip[data-p="P0"].active { background: color-mix(in srgb, var(--color-p0) 15%, transparent); border-color: var(--color-p0); color: var(--color-p0-ink); }
+.filter-chip[data-p="P1"].active { background: color-mix(in srgb, var(--color-p1) 15%, transparent); border-color: var(--color-p1); color: var(--color-p1-ink); }
+.filter-chip[data-p="P2"].active { background: color-mix(in srgb, var(--color-p2) 15%, transparent); border-color: var(--color-p2); color: var(--color-p2-ink); }
+.filter-chip[data-p="P3"].active { background: color-mix(in srgb, var(--color-p3) 15%, transparent); border-color: var(--color-p3); color: var(--color-p3-ink); }
 .chip-count { opacity: 0.75; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 
 /* Issue #6 Phase 4.3 — subtle hover shimmer: a diagonal highlight band swept
@@ -2709,7 +2762,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 }
 .daily-todo-remaining.ok { color: var(--color-brand-gold); }
 :root[data-theme='dark'] .daily-todo-remaining.ok { color: var(--color-brand-gold); }
-.daily-todo-remaining.warn { color: var(--color-p1); }
+.daily-todo-remaining.warn { color: var(--color-p1-ink); }
 .daily-todo-remaining.danger { color: var(--color-p0); }
 .daily-todo-remaining.done { color: var(--color-text-muted); font-weight: 700; }
 
@@ -2896,10 +2949,10 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   font-size: 9px;
   font-weight: 800;
 }
-.badge.P0 { background: color-mix(in srgb, var(--color-p0) 15%, transparent); color: var(--color-p0); }
-.badge.P1 { background: color-mix(in srgb, var(--color-p1) 15%, transparent); color: var(--color-p1); }
-.badge.P2 { background: color-mix(in srgb, var(--color-p2) 15%, transparent); color: var(--color-p2); }
-.badge.P3 { background: color-mix(in srgb, var(--color-p3) 15%, transparent); color: var(--color-p3); }
+.badge.P0 { background: color-mix(in srgb, var(--color-p0) 15%, transparent); color: var(--color-p0-ink); }
+.badge.P1 { background: color-mix(in srgb, var(--color-p1) 15%, transparent); color: var(--color-p1-ink); }
+.badge.P2 { background: color-mix(in srgb, var(--color-p2) 15%, transparent); color: var(--color-p2-ink); }
+.badge.P3 { background: color-mix(in srgb, var(--color-p3) 15%, transparent); color: var(--color-p3-ink); }
 
 /* Checklist items */
 .check-item {
@@ -3031,7 +3084,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   border-color: transparent;
 }
 .check-item.done .check-mark { transform: scale(1); opacity: 1; }
-.check-item.done .check-title { color: var(--color-text-faint); }
+.check-item.done .check-title { color: var(--color-text-muted); }
 
 .check-body { flex: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
 /* issue #6 Phase 7 — strike-through animates in via `::after` width 0% -> 100%
@@ -3067,10 +3120,10 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   font-weight: 800;
   opacity: 0.65;
 }
-.priority-tag.P0 { color: var(--color-p0); opacity: 1; }
-.priority-tag.P1 { color: var(--color-p1); opacity: 1; }
-.priority-tag.P2 { color: var(--color-p2); opacity: 1; }
-.priority-tag.P3 { color: var(--color-p3); opacity: 1; }
+.priority-tag.P0 { color: var(--color-p0-ink); opacity: 1; }
+.priority-tag.P1 { color: var(--color-p1-ink); opacity: 1; }
+.priority-tag.P2 { color: var(--color-p2-ink); opacity: 1; }
+.priority-tag.P3 { color: var(--color-p3-ink); opacity: 1; }
 
 /* issue #136 Phase 1 — recolored from --color-warning-bg/--color-brand-gold to a
    neutral pill: a resource count is metadata, not a status, and doesn't need
@@ -3266,7 +3319,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 }
 /* issue #155 v2 Phase D3 (full completion pass) — featureBadge.js; white-text-fails-on
    -lime pattern, swaps both fill and text. */
-:root[data-theme='dark'] .feature-new-badge { background: var(--color-brand-gold); color: var(--color-text); }
+:root[data-theme='dark'] .feature-new-badge { background: var(--color-brand-gold); }
 
 .notes-textarea {
   resize: vertical;
@@ -3691,7 +3744,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .settings-verified { color: var(--color-brand-gold); font-weight: 700; }
 /* issue #155 v2 Phase D2 — settings-only class, recolored; falls back to mint in light theme. */
 :root[data-theme='dark'] .settings-verified { color: var(--color-brand-gold); }
-.settings-unverified { color: var(--color-p1); font-weight: 700; }
+.settings-unverified { color: var(--color-p1-ink); font-weight: 700; }
 
 .settings-select { max-width: 200px; }
 
@@ -3939,7 +3992,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .priority-table thead th { color: var(--color-text-muted); font-weight: 600; border-bottom: 1px solid var(--color-border); }
 .priority-table td { border-bottom: 1px solid var(--color-border); font-variant-numeric: tabular-nums; }
 .priority-table tbody tr:last-child td { border-bottom: none; }
-.priority-cell[data-band="empty"] { color: var(--color-text-faint); }
+.priority-cell[data-band="empty"] { color: var(--color-text-muted); }
 .priority-cell[data-band="low"] { background: var(--color-danger-bg); color: var(--color-danger); }
 .priority-cell[data-band="mid"] { background: var(--color-warning-bg); color: var(--color-warning); }
 .priority-cell[data-band="high"] { background: var(--color-success-bg); color: var(--color-success); }
@@ -4035,7 +4088,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   max-width: 46ch;
 }
 .landing-hero-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-6); }
-.landing-hero-stat { font-size: var(--text-sm); color: var(--color-text-faint); margin: 0; }
+.landing-hero-stat { font-size: var(--text-sm); color: var(--color-text-muted); margin: 0; }
 
 .landing-hero-mock { display: flex; justify-content: center; position: relative; z-index: 1; }
 .landing-mock-card {
@@ -4164,9 +4217,9 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .step-card-text { font-size: var(--text-sm); line-height: var(--leading-loose); color: var(--color-text-muted); margin: 0; }
 
 .landing-proof { text-align: center; padding: 0 var(--space-6) var(--space-12); }
-.landing-proof-text { font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); color: var(--color-brand-gold); max-width: 52ch; margin: 0 auto; }
+.landing-proof-text { font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); color: var(--color-brand-gold-ink); max-width: 52ch; margin: 0 auto; }
 /* issue #155 v2 Phase C — landing-only, recolored; falls back to mint in light theme. */
-:root[data-theme='dark'] .landing-proof-text { color: var(--color-brand-gold); }
+:root[data-theme='dark'] .landing-proof-text { color: var(--color-brand-gold-ink); }
 
 /* issue #155 (ZeBeyond direction) — same bg-grid-glow treatment as .landing-hero above. */
 .landing-cta {
@@ -4194,7 +4247,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   padding: var(--space-8) var(--space-6);
   border-top: 1px solid var(--color-border);
 }
-.landing-footer-copy { font-size: var(--text-sm); color: var(--color-text-faint); margin: 0; }
+.landing-footer-copy { font-size: var(--text-sm); color: var(--color-text-muted); margin: 0; }
 
 /* ==========================================================================
    Responsive breakpoint scale (issue #36)
