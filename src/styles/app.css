@@ -207,16 +207,13 @@
 
   --stagger-base: 40ms;
 
-  /* Numbered brand/accent/neutral scale (issue #6 Phase 1.3) — no
-     Alpenglow equivalent, unchanged (fixed raw values, not theme-flipping;
+  /* Numbered accent/neutral scale (issue #6 Phase 1.3) — no Alpenglow
+     equivalent, unchanged (fixed raw values, not theme-flipping;
      --color-brand-gold/--color-warning above are the real theme-aware
-     slots components should use). */
-  --brand-50: #f0fdfa;
-  --brand-100: #ccfbf1;
-  --brand-500: #14b8a6;
-  --brand-600: #0f766e;
-  --brand-700: #0d5c56;
-
+     slots components should use). The matching --brand-50/100/500/600/700
+     teal scale was removed here (not just left unused) once shareCard.js's
+     `drawBackground()` moved to --color-brand-gold-ink/--color-brand-rose-ink
+     — those five tokens had no other call site anywhere in the app. */
   --accent-50: #fff7ed;
   --accent-400: #fb923c;
   --accent-500: #f97316;
@@ -798,9 +795,23 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    layer (it exists mainly so `.auth-page-right`'s content can sit at a
    z-index above it without a separate background rule) — left in place
    rather than deleted in case a future non-gradient background treatment
-   (a subtle pattern, etc.) wants this same fixed full-bleed layer again. */
+   (a subtle pattern, etc.) wants this same fixed full-bleed layer again.
+   `position: absolute`, not `fixed` — real bug, found live: `.auth-page-bg`
+   is a DOM descendant of `.auth-page-right` (the right column only), but
+   `position: fixed` ignores DOM nesting entirely and sizes `inset: 0`
+   against the full viewport, not its parent. On a wide two-column sign-in
+   page this painted the light `--color-bg` fill across the *entire* page —
+   including over the always-dark `.auth-marketing` panel on the left, whose
+   own fixed-white text (`.auth-marketing-headline` etc.) then read as
+   barely-visible pale text on light cream instead of white-on-near-black.
+   `pointer-events: none` hid this from click/hit-testing (`elementFromPoint`)
+   the whole time, which is why it wasn't caught visually in normal use —
+   nothing was ever clickable through it, only visually broken. `position:
+   absolute` correctly scopes `inset: 0` to `.auth-page-right` (already
+   `position: relative`, immediately above), matching what this layer was
+   always meant to cover. */
 .auth-page-bg {
-  position: fixed;
+  position: absolute;
   inset: 0;
   background: var(--color-bg);
   pointer-events: none;
@@ -4570,15 +4581,19 @@ textarea.feedback-field-input { min-height: 88px; resize: vertical; }
 }
 
 /* Print/PDF export of a roadmap (issue #133 Part 2, restyled/branded in issue
-   #160) — a dedicated print stylesheet, not a separate route: printRoadmap.js
-   appends a plain `.print-roadmap` snapshot (now including a repeating
-   `.print-page-header`/`.print-page-footer` brand pair) to document.body and
-   toggles `.print-mode` on it just for the duration of window.print().
-   `.print-include-notes-row` is the small on-screen checkbox in the pre-print
-   modal; everything else here only applies inside an actual print/PDF
-   context. */
+   #160, restructured onto a real <table>/<thead>/<tfoot> and given a page
+   watermark + browser-chrome suppression in a follow-up — see the block
+   comments inside @media print below) — a dedicated print stylesheet, not a
+   separate route: printRoadmap.js appends a `.print-roadmap` <table> snapshot
+   (with a repeating `.print-page-header`/`.print-page-footer` brand pair
+   inside its <thead>/<tfoot>) plus a sibling `.print-watermark` layer to
+   document.body, and toggles `.print-mode` on it just for the duration of
+   window.print(). `.print-include-notes-row` is the small on-screen checkbox
+   in the pre-print modal; everything else here only applies inside an actual
+   print/PDF context. */
 .print-include-notes-row { display: flex; align-items: center; gap: 8px; margin: 16px 0; }
-.print-roadmap { display: none; }
+.print-roadmap,
+.print-watermark { display: none; }
 
 /* intentional: every literal color in this @media print block is fixed,
    theme-independent print output — a printed page always renders on
@@ -4594,25 +4609,108 @@ textarea.feedback-field-input { min-height: 88px; resize: vertical; }
    #15803d all clear 4.5:1+ for white text at this weight/size, and clear
    4.5:1+ again as text directly on white. */
 @media print {
-  body.print-mode > *:not(.print-roadmap) { display: none !important; }
-  body.print-mode .print-roadmap {
-    display: block;
-    background: #ffffff; /* intentional: fixed print background, see block comment above */
-    color: #111111; /* intentional: fixed print text color, see block comment above */
-    padding: 64px 0 56px; /* clears the fixed header/footer band on every page */
+  /* `@page { margin: 0 }` removes the blank margin band Chrome/Firefox
+     otherwise reserve for their own browser-injected print chrome — the
+     page URL and date/time in the top corners, the URL and page-number in
+     the bottom corners (visible in a real export as "localhost:4173/#/app"
+     during local dev — real feedback, screenshot). With no margin space to
+     paint into, that chrome no longer renders at all, in both engines. This
+     also means our own header/footer/content no longer get any "free"
+     side/edge padding from the browser's default page margin — see the
+     `padding: 0 40px`/`36px` additions below the table rules, which replace
+     it. A user's own browser-level "Headers and footers" print-dialog
+     toggle is a separate setting this can't reach either way — this fix
+     just makes sure there's no default browser margin left for that chrome
+     to use even if a user does have it enabled. */
+  @page {
+    margin: 0;
   }
 
-  /* Repeating branded header/footer — `position: fixed` elements repeat on
-     every physical page in Chrome and Firefox print (verified empirically,
-     issue #160), unlike a single header at the top of the flowed document. */
-  .print-page-header {
+  /* `.print-roadmap` is a real <table>, with the branded header/footer
+     inside a genuine <thead>/<tfoot> (printRoadmap.js) — not a `position:
+     fixed` div pair. Two fixed-positioning approaches were tried and
+     rejected first, both confirmed broken via a real multi-page `page.pdf()`
+     render, not just visual inspection: (1) `position: fixed` header/footer
+     with `.print-roadmap`'s own padding reserving clearance — that padding
+     only applies once, at the very top/bottom of the whole flowed document,
+     so pages after the first flowed content flush against the page edge,
+     underneath the fixed header (reported live via a 47-page multi-phase
+     roadmap export, "Core Java (P0)" overlapping the brand header on every
+     page after the first). (2) `position: fixed` + an `@page` margin to
+     reserve that same space on every page — this looked like the correct
+     fix, but Chromium's print pagination positions `fixed` elements
+     relative to the *content* box (inside the page margin), not the page
+     edge, so a fixed header at `top: 0` still landed at the same coordinate
+     the flowing content starts at, reproducing the identical overlap
+     regardless of margin size. `<thead>`/`<tfoot>` is the browser-native,
+     spec-backed mechanism for exactly this ("repeat this row and reserve
+     space for it on every printed page") and was the only one of the three
+     that a real multi-page PDF render confirmed clean on every page.
+     `.print-roadmap` itself deliberately carries no `background` (unlike an
+     earlier version) — a printed page is white paper regardless, and an
+     opaque table background would paint over `.print-watermark` (below),
+     which needs to show through from underneath the flowing content. */
+  body.print-mode > *:not(.print-roadmap):not(.print-watermark) { display: none !important; }
+  body.print-mode .print-roadmap {
+    display: table;
+    width: 100%;
+    border-collapse: collapse;
+    color: #111111; /* intentional: fixed print text color, see block comment above */
+    position: relative;
+    z-index: 1;
+  }
+  .print-roadmap thead td,
+  .print-roadmap tfoot td { padding: 0 40px; }
+  .print-roadmap tbody td { padding: 0 40px 24px; }
+
+  /* A faint, blurred repeating watermark behind the content on every page —
+     `position: fixed` repeats correctly per page on its own (confirmed
+     during the header/footer investigation above); it doesn't need the
+     `<thead>`/`<tfoot>` space-reservation trick since overlapping the
+     content is the intent here, not a bug to avoid. Sized and centered
+     against a Letter-ish page (816×1056px at 96dpi) so it reads as one
+     centered mark per page rather than drifting off-page on a different
+     paper size — `width`/`height: 100vw`/`100vh` plus flex-centering keeps
+     it centered regardless of actual page dimensions. Low opacity + blur
+     keeps the underlying checklist text legible on top of it, per the
+     explicit "both should be visible" requirement. `print-color-adjust`
+     isn't needed here (opacity/color always print by default, unlike
+     `background-color`/`box-shadow`, which need the browser's "background
+     graphics" print option enabled) — this deliberately uses `color`, not a
+     `background`, so it always renders, that option or not. */
+  .print-watermark {
+    display: flex;
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 0;
+    filter: blur(2px);
+  }
+  .print-watermark-mark {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.07;
+    color: #111111; /* intentional: fixed print watermark color, see block comment above */
+  }
+  .print-watermark-mark .brand-mark {
+    width: 160px;
+    height: 160px;
+    box-shadow: none;
+  }
+  .print-watermark-mark .brand-mark svg { width: 100%; height: 100%; }
+  .print-watermark-mark .brand-name {
+    font-size: 64px;
+    color: #111111; /* intentional: fixed print watermark color, see block comment above */
+  }
+
+  .print-page-header {
     display: flex;
     align-items: center;
-    padding: 12px 0;
+    padding: 20px 0 12px;
     border-bottom: 1px solid #ccc; /* intentional: fixed print divider color */
   }
   .print-brand .brand-name,
@@ -4620,11 +4718,7 @@ textarea.feedback-field-input { min-height: 88px; resize: vertical; }
   .print-brand .brand-mark { box-shadow: none; }
 
   .print-page-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 8px 0;
+    padding: 8px 0 20px;
     border-top: 1px solid #ccc; /* intentional: fixed print divider color */
     font-size: 11px;
     color: #666; /* intentional: fixed print text color */

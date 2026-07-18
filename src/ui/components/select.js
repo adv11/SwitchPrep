@@ -100,6 +100,27 @@ export function createSelect(options, { value, ariaLabel, className = '' } = {})
     listbox.style.width = `${rect.width}px`;
   }
 
+  // The listbox is positioned once, at open time, from the trigger's
+  // `getBoundingClientRect()` — but `position: fixed` doesn't track page
+  // scroll the way normal-flow content does. Without this, scrolling the
+  // page while the listbox is open left it visually stuck at its original
+  // screen coordinates while the trigger (and everything else) scrolled out
+  // from under it — a real, reported bug: an open listbox rendered as a
+  // giant stuck overlay covering unrelated page content at every subsequent
+  // scroll position, never closing. `scroll` doesn't bubble, so this must be
+  // a capture-phase listener on `document`, matching `resize`'s own
+  // always-global dispatch — closing (not repositioning) is the simplest fix
+  // that can't itself drift out of sync with a moved/resized trigger.
+  // `e.target === listbox` is excluded: `.custom-select-listbox` itself is
+  // `overflow-y: auto` (a long options list scrolls internally), and that
+  // internal scroll also dispatches a `scroll` event a capture-phase
+  // `document` listener sees — closing the listbox because the user is
+  // scrolling *through its own options* would be a new, self-inflicted bug.
+  function onWindowScrollOrResize(e) {
+    if (e?.target === listbox) return;
+    close();
+  }
+
   function setOpen(next) {
     open = next;
     wrap.classList.toggle('open', open);
@@ -110,8 +131,12 @@ export function createSelect(options, { value, ariaLabel, className = '' } = {})
       positionListbox();
       const activeIdx = Math.max(0, options.findIndex(o => o.value === selected));
       optionEls[activeIdx]?.focus();
+      document.addEventListener('scroll', onWindowScrollOrResize, true);
+      window.addEventListener('resize', onWindowScrollOrResize);
     } else if (listbox.isConnected) {
       listbox.remove();
+      document.removeEventListener('scroll', onWindowScrollOrResize, true);
+      window.removeEventListener('resize', onWindowScrollOrResize);
     }
   }
 
@@ -220,6 +245,8 @@ export function createSelect(options, { value, ariaLabel, className = '' } = {})
   wrap._cleanup = () => {
     clearTimeout(typeaheadTimer);
     document.removeEventListener('click', onDocClick);
+    document.removeEventListener('scroll', onWindowScrollOrResize, true);
+    window.removeEventListener('resize', onWindowScrollOrResize);
     listbox.remove();
   };
 

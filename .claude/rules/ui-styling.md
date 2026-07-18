@@ -156,6 +156,10 @@ not just each in isolation.
 
 **The same transformed-ancestor trap hit a second, more general component (issue #136 Phase 3) — the fix this time is a body-level portal, not a CSS tweak.** `select.js`'s custom listbox (replacing every bare `<select>`, see below) is meant to be dropped into *any* form, and `itemPanel.js`'s Priority field sits inside `.item-panel`, whose slide-in animation is `.item-panel.show { transform: translateX(0) }` — a permanently-applied, non-`none` transform, the exact ancestor shape the rule above warns about. A `position: fixed` listbox nested inside `.item-panel` positioned itself relative to the panel's own box, not the viewport — found live via a `getBoundingClientRect()` mismatch between the trigger (correct) and the listbox (offset by roughly the panel's own position). Auditing every current and future call site for a transformed ancestor doesn't scale, so `select.js` sidesteps the whole bug class structurally: `.custom-select-listbox` is never a DOM descendant of the select's own wrapper — it's appended straight to `document.body` when opened and removed when closed (a portal), guaranteeing there is never an ancestor between it and the root to hijack its `position: fixed` coordinates, regardless of which animated/transformed container a caller nests the select inside. Any future floating/positioned element meant to be droppable into an arbitrary form should follow this same portal pattern rather than assuming its container is untransformed — **including a "known-safe" chrome location**, which turned out not to be safe either: `dropdown.js`'s `.dropdown-menu` (issue #121 follow-up, reported live with a screenshot) intermittently rendered *behind* other page content specifically when triggered from the sidebar's avatar identity menu, nested inside the animated dashboard shell. Unlike the `.item-panel` case above, this wasn't purely a mispositioning bug — `position: fixed` also *stacks* (z-index paint order) within whatever stacking context its containing block belongs to, not the root, so even a correctly-positioned fixed menu can paint behind/in front of unrelated content inconsistently depending on which sibling stacking contexts exist at open time. `dropdown.js` now portals `.dropdown-menu` to `document.body` on open exactly like `select.js`'s listbox — its open/closed visibility is driven by `.dropdown-menu.open` directly (not a `.dropdown.open .dropdown-menu` descendant selector, which stopped matching once the menu left the DOM subtree), and its keydown handling is split across the trigger and the portaled menu rather than a single wrapper-level listener (same split `select.js` uses for its trigger/listbox). There is no longer a "this component only lives somewhere safe" exemption anywhere in this app — every floating/positioned element is a portal.
 
+**A fourth variant — a portaled `position: fixed` element positioned once at open time doesn't track page scroll, and neither `select.js` nor `dropdown.js` originally closed or repositioned on scroll (real bug, reported with screenshots).** `positionListbox()`/`positionMenu()` compute `left`/`top`/`width` from the trigger's `getBoundingClientRect()` exactly once, when the listbox/menu opens — correct at that instant, but `position: fixed` coordinates don't move as the page scrolls (that's the whole point of `fixed`), while the trigger they were computed from does move, since it's a normal-flow element. Leaving either open and scrolling the page showed the fixed listbox/menu visually stuck at its original screen position, rendering as a giant overlay on top of whatever content happened to scroll underneath it — reported live from the onboarding page's Daily Todos duration `<select>`, staying stuck over the entire template card grid across multiple scroll positions, with no way to dismiss it short of clicking it or pressing Escape. Both components now close (not reposition — simpler, and can't itself drift out of sync with a moved/resized trigger) on `scroll` and `resize`, attaching the listener only while open and tearing it down in the existing `_cleanup()`. `scroll` doesn't bubble, so this has to be a capture-phase listener on `document`, not a bubble-phase one on the trigger/wrapper. `select.js`'s version has one extra guard `dropdown.js`'s doesn't need: `.custom-select-listbox` is `overflow-y: auto` for a long option list, and scrolling *inside* the open listbox itself also dispatches a `scroll` event a capture-phase `document` listener sees — the handler explicitly ignores any scroll event whose `target` is the listbox itself, or scrolling through a long option list would immediately close it. Any future portaled `position: fixed` element (a new dropdown, a new custom field) needs this same scroll/resize-close pairing from the start, not just the transform/z-index portal fix above — being correctly positioned *at open time* isn't the same guarantee as staying correctly positioned *while open*.
+
+**A fifth variant — a non-portaled `position: fixed` element sized itself against the viewport, not its intended parent, silently painting over unrelated content two DOM levels up (real bug, reported with a screenshot).** `.auth-page-bg` (a decorative background-fill layer meant to sit behind just `.auth-page-right`, the sign-in card's own column) is `position: fixed; inset: 0`. Every other `position: fixed` bug documented in this file so far has been about *where a portaled element ends up* (a transformed ancestor hijacking its containing block, or its coordinates going stale on scroll) — this one is simpler and easier to miss precisely because it never moves anywhere: `inset: 0` on a `position: fixed` element always resolves against the full viewport, full stop, regardless of which element it's nested inside or what that parent's own size/position is. `.auth-page-bg` is a DOM child of `.auth-page-right` (intentionally, so it visually reads as "this column's background"), but being `position: fixed` meant it silently ignored that nesting and covered the *entire* two-column `.auth-page` — painting its light `--color-bg` fill directly over the always-dark `.auth-marketing` panel on the left, whose own fixed-white text then rendered as near-invisible pale ghosting on top of it. `pointer-events: none` (required so the layer never intercepts clicks meant for real content) also meant `elementFromPoint()`/`elementsFromPoint()` never reported it as present at that location, which made this bug unusually hard to isolate — every hit-testing-based check said the correctly-styled `.auth-marketing-headline` was the topmost element there, while the actual paint told a different story. Fixed by switching to `position: absolute` — its intended containing block, `.auth-page-right`, is already `position: relative`, so `inset: 0` now correctly resolves against that column alone. **The general rule this adds**: `position: fixed` is a promise to size/position against the viewport specifically — the moment you want an element scoped to *any* ancestor smaller than the full page (even one immediately one level up), that ancestor needs `position: relative` (already true almost everywhere in this app) and the child needs `position: absolute`, not `fixed`. Reach for `fixed` only when viewport-relative sizing/position is *actually* the intent (a repeating print header, a toast stack, a modal overlay) — never as a default "make this sit behind its sibling" pattern.
+
 **A third variant of the same bug class — plain CSS `overflow` clipping, not a transformed-ancestor mispositioning (issue #180 follow-up).** `tooltip.js`'s `attachTooltip()` had never actually followed the portal convention above — its `.tooltip-bubble` was a plain absolutely-positioned DOM child of the trigger, invisible almost everywhere the trigger has no scrolling/overflow ancestor. `heatmap.js`'s per-cell tooltip (trigger inside `.heatmap-scroll`, `overflow-x: auto`, which per this file's own "one non-`visible` overflow axis forces the other to `auto` too" rule above) got its bubble visibly clipped at the container's edge — found live via a screenshot report, compounded by the same cell also setting a redundant native `title` attribute (two overlapping tooltips at once, one of them cut off). Fixed the same way as `select.js`/`dropdown.js`: `attachTooltip()` now portals `.tooltip-bubble` to `document.body` on `mouseenter`/`focus` (removed on `mouseleave`/`blur`, not left resident in the tree), positioned via `getBoundingClientRect()` (viewport-relative, matching `position: fixed`) and direct `bubble.style.left`/`top` writes. Any future tooltip-like hover affordance should portal from the start rather than assuming its trigger will never end up inside a scrolling container.
 
 **Every custom interactive element must explicitly set `color` (and `font`) — never rely on inheritance (issue #116).** A `<button>` does not inherit `color`/`font` from the page by default — the UA stylesheet gives it its own `color: buttontext`/`font: unset`, overriding whatever ancestor color the rest of the page has. `.feedback-type-card` and `.my-report-summary` (issue #9/#115) shipped this way and rendered near-black text on a dark navy background in dark theme; `.notes-indicator` (issue #116, a bare `<button>` whose only content is a `currentColor`-based `createIcon()` SVG) had the identical gap and was fixed alongside this rule. Every other custom button-like class in this app (`.btn`, `.forgot-link`, `.filter-chip`, `.tab`, `.template-card-*`, etc.) already does this correctly — set `color` (a token, or `inherit` if the button's own text genuinely lives in a child element that sets its own color, like `.app-sidebar-identity`/`.command-palette-item`) and `font: inherit` on any new `button`/`[role="button"]`/custom `input`-adjacent wrapper the moment you add it, not after a live screenshot report catches the gap. `scripts/lint-theme.mjs` (run in CI alongside `npm run lint`) enforces this automatically for any `el('button', { className: '...' })` outside the `.btn` family — see the script's own header comment for how it decides.
@@ -621,9 +625,16 @@ point of the new token is to replace ad hoc two-color gradients like that one.
 not in the spec's list (`--duration-instant`/`-enter`, `--stagger-base`, all
 `--ease-spring`/`-out`/`-in-out`/`-bounce` — motion consolidation is PR 2/§5 scope),
 `--leading-snug`, `--tracking-*`, `--topbar-h`, `--icon-size-*`, `--chip-*`,
-`--shadow-xs`/`-xl`/`-brand`, `--heat-0..4`, `--neutral-*`, `--brand-50/100/500/600/700`
-(`shareCard.js`'s canvas-rendered share card, a distinct product-identity surface — see
-that file's own `cssVar()` calls), `--accent-50/400/500`.
+`--shadow-xs`/`-xl`/`-brand`, `--heat-0..4`, `--neutral-*`, `--accent-50/400/500`.
+**`--brand-50/100/500/600/700`** (the old teal scale `shareCard.js`'s canvas-rendered
+share card kept using on its own after the rest of the app moved to gold/rose) was a
+similar deliberate exception at the time — since removed in a follow-up, once real
+feedback (a screenshot of the share card still showing the retired teal look) prompted
+recoloring it too. `shareCard.js`'s `drawBackground()` now reads
+`--color-brand-gold-ink`/`--color-brand-rose-ink` (see that file's own comment for why
+the darkened "-ink" variants, not the base gold/rose tokens, are the right choice for a
+card that hosts white text throughout) — the old five-token teal scale had no other call
+site anywhere in the app, so it was deleted outright rather than left as dead tokens.
 
 **Component-level changes, all CSS-only except where noted:**
 - **Buttons** — `.btn-primary`/`.btn-secondary`/`.btn-ghost`/`.btn-danger` rebuilt
@@ -770,21 +781,89 @@ section was unbuilt:
 No PR 3 remains for §5 — the section is complete. If a future audit finds another gap,
 treat it as a normal follow-up fix, not evidence the whole system needs rebuilding.
 
-## Branded print/PDF export (issue #160)
+## Branded print/PDF export (issue #160, restructured onto `<thead>`/`<tfoot>` in a follow-up)
 
-**A repeating print header/footer uses `position: fixed`, not a CSS `@page` margin
-box.** `@page`'s `@top-center`/`@bottom-center` margin-box syntax is the
-spec-sanctioned way to put content in a page margin, but real browser support for
-putting arbitrary DOM content (a logo + wordmark, not just page-number counters) into
-one is inconsistent enough across engines that it isn't a reliable cross-browser
-choice today. `printRoadmap.js`'s `.print-page-header`/`.print-page-footer` are
-ordinary `position: fixed` elements (`top: 0`/`bottom: 0`) inside `.print-roadmap` —
-confirmed empirically (not assumed) to repeat on every physical page in Chromium via
-a real 47-page multi-phase `page.pdf()` render (`Ascent`/tagline/`ascent-app.com`
-text all present on the first, middle, and last page). `.print-roadmap`'s own
-`padding: 64px 0 56px` reserves space so the fixed header/footer never overlaps the
-first page's content. If you add or resize either fixed band, keep that padding in
-sync so nothing renders underneath it on page 1.
+**A repeating print header/footer uses a real `<table>` with `<thead>`/`<tfoot>`, not
+`position: fixed` and not an `@page` margin box.** Two `position: fixed`-based
+approaches were tried and rejected before this, both confirmed broken via a real
+multi-page `page.pdf()` render (not just visual inspection or assumption) — see the
+comment above `@media print` in `app.css` for the exact reasoning, kept in detail
+there since this is easy to reinvent incorrectly a third time:
+
+1. **`position: fixed` header/footer + `.print-roadmap`'s own padding for
+   clearance.** That padding only applies once, at the very top/bottom of the whole
+   flowed document — it does nothing on page 2+, where Chrome's pagination starts the
+   next chunk of flowing content flush against the physical page edge. A real
+   47-page multi-phase roadmap export showed every page after the first with its
+   heading text overlapping the fixed brand header directly on top of it.
+2. **`position: fixed` header/footer + an `@page { margin-top/-bottom }` rule.**
+   This looked like the correct fix for (1) — `@page` margins genuinely do
+   re-apply on every physical page, unlike document padding — but a follow-up
+   `page.pdf()` render with real text-position inspection (not a screenshot) showed
+   the overlap was still present: Chromium positions `position: fixed` elements
+   during print pagination relative to the page's *content box* (i.e., already
+   inside the `@page` margin), not the physical page edge. A fixed header at
+   `top: 0` therefore lands at the exact same coordinate the flowing content starts
+   at — the margin reserves the space, but the fixed header renders *inside* that
+   reserved space instead of *above* it, reproducing the identical overlap
+   regardless of how large the margin is.
+
+`<thead>`/`<tfoot>` inside a real `<table>` (`.print-roadmap` — `printRoadmap.js`
+builds an actual `<table>`/`<thead>`/`<tfoot>`/`<tbody>` tree now, not `<div>`s with a
+`position: fixed` class) is the browser-native, spec-backed mechanism for exactly
+this — "repeat this row and reserve real space for it on every printed page" — and
+was the only one of the three approaches a real multi-page `page.pdf()` render
+confirmed clean (no overlap, correct repeat) on every page, verified specifically in
+Chromium via direct PDF text-position extraction, not a visual screenshot alone.
+`.print-page-header`/`.print-page-footer` (the branded content itself, unchanged
+visually) now live inside a `<td>` in the `<thead>`/`<tfoot>` row rather than being
+`position: fixed` themselves — if you ever need a third repeating band (e.g. a
+running page-number footer), add another `<thead>`/`<tfoot>` row rather than
+reaching for `position: fixed` again.
+
+**`@page { margin: 0 }` suppresses the browser's own injected print
+header/footer (URL, date, page number) — real feedback, screenshot.** Chrome
+and Firefox both render their own print chrome (page URL in one top corner,
+date/time in the other, URL + page number in the bottom corners) into the
+blank margin band they reserve around the page by default — this showed up
+live as `localhost:4173/#/app` printed at the top of every exported page
+during local dev. With `@page { margin: 0 }` (`app.css`'s `@media print`
+block), there's no margin band left for that browser chrome to paint into,
+regardless of the user's own "Headers and footers" print-dialog toggle. This
+is unrelated to (and doesn't reintroduce) the `<thead>`/`<tfoot>` fix above —
+`position: fixed` is no longer used anywhere in this stylesheet, so there's
+no risk of the earlier margin-vs-content-box mispositioning bug recurring.
+Since the browser's own default margin is gone, `.print-roadmap`'s
+`<thead>`/`<tfoot>`/`<tbody>` `<td>`s now carry their own explicit
+`padding: 0 40px` so content doesn't run edge-to-edge on the physical page —
+if you resize the page's overall side margin, change that padding value, not
+`@page`'s (which must stay `0`).
+
+**`.print-watermark` is a `position: fixed` full-page repeating background
+mark, and deliberately does *not* use the `<thead>`/`<tfoot>` technique
+above.** Real feedback: printed roadmaps should show a faint, blurred Ascent
+logo+wordmark behind the checklist content on every page. Unlike the
+header/footer, a watermark is *meant* to overlap the flowing content (that's
+the whole point of a watermark) rather than needing space reserved clear of
+it — so the exact problem `<thead>`/`<tfoot>` solves (repeat *and reserve
+space for* a row) doesn't apply, and `position: fixed`'s per-page repeat
+behavior (which was never broken — the earlier bug was the *unrelated*
+margin/content-box mispositioning issue, not the fact that fixed content
+doesn't repeat) works fine here on its own. `.print-watermark` (`z-index: 0`,
+`filter: blur(2px)`, `pointer-events: none`, appended to `document.body`
+before `.print-roadmap` in `printSnapshot()`) sits behind
+`.print-roadmap` (`z-index: 1`) — `.print-roadmap` itself carries no
+`background` for this exact reason: an opaque table background would paint
+over the watermark instead of letting it show through the whitespace/behind
+the text, since the physical page canvas is already white regardless.
+`.print-watermark-mark`'s `opacity: 0.07` (not a `background-color` on a
+`background` layer) is deliberate — `opacity`/`color` always print, unlike
+`background-color`/`box-shadow`, which need the browser's own "background
+graphics" print option enabled; a watermark that silently disappeared for
+any user with that option off would be a worse bug than a heavier one that's
+always guaranteed to render. Any future "always-visible regardless of
+optional print-dialog settings" print decoration should follow this
+`color`/`opacity`-only rule.
 
 **Every color in the print stylesheet is a fixed literal, not a `--p0`-`--p3` token
 read — even though the hues are meant to visually match the on-screen priority

@@ -65,6 +65,19 @@ export function createDropdown(trigger, items, { align = 'end' } = {}) {
     }
   }
 
+  // Positioned once, at open time, from the trigger's `getBoundingClientRect()`
+  // — but `position: fixed` doesn't track page scroll like normal-flow
+  // content does. Without this, scrolling the page while the menu is open
+  // left it visually stuck at its original screen coordinates while the
+  // trigger scrolled out from under it (the identical bug `select.js`'s
+  // listbox had, same fix applied here — see that file's own comment).
+  // `scroll` doesn't bubble, so this must be a capture-phase `document`
+  // listener; closing rather than repositioning is the simplest fix that
+  // can't itself drift out of sync with a moved/resized trigger.
+  function onWindowScrollOrResize() {
+    close();
+  }
+
   function setOpen(next) {
     open = next;
     wrap.classList.toggle('open', open);
@@ -74,8 +87,12 @@ export function createDropdown(trigger, items, { align = 'end' } = {}) {
       document.body.appendChild(menu);
       positionMenu();
       itemEls[0]?.focus();
+      document.addEventListener('scroll', onWindowScrollOrResize, true);
+      window.addEventListener('resize', onWindowScrollOrResize);
     } else if (menu.isConnected) {
       menu.remove();
+      document.removeEventListener('scroll', onWindowScrollOrResize, true);
+      window.removeEventListener('resize', onWindowScrollOrResize);
     }
   }
 
@@ -122,6 +139,8 @@ export function createDropdown(trigger, items, { align = 'end' } = {}) {
 
   wrap._cleanup = () => {
     document.removeEventListener('click', onDocClick);
+    document.removeEventListener('scroll', onWindowScrollOrResize, true);
+    window.removeEventListener('resize', onWindowScrollOrResize);
     if (menu.isConnected) menu.remove();
   };
 
