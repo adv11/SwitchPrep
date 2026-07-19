@@ -6,6 +6,8 @@ import { test, expect } from './fixtures.js';
 const FIREBASE_CONFIGURED = !!process.env.FIREBASE_CONFIGURED;
 
 test.describe('feature tour (issue #17)', () => {
+  test.use({ skipTourAutoDismiss: true });
+
   test('guest sign-up → template pick → tour auto-runs → reload → does not reappear', async ({ page }) => {
     test.skip(!FIREBASE_CONFIGURED, 'Requires FIREBASE_CONFIGURED env var — see issue #37');
     await page.goto('/#/signin');
@@ -17,7 +19,7 @@ test.describe('feature tour (issue #17)', () => {
     await expect(page.locator('.tour-welcome-card')).toBeVisible({ timeout: 10_000 });
     await page.click('.tour-welcome-card [data-action="start"]');
 
-    for (let i = 0; i < 5; i += 1) {
+    for (let i = 0; i < 6; i += 1) {
       await expect(page.locator('.tour-popover')).toBeVisible();
       await page.click('.tour-popover [data-action="next"], .tour-popover [data-action="finish"]');
     }
