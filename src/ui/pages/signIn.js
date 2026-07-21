@@ -16,7 +16,13 @@ async function signInAsGuest(message, setBusy) {
   try {
     await authApi.guest();
     showToast('Guest session started. Create an account anytime to keep progress.', 'info');
-    navigate('/app', true);
+    // No navigate() here — main.js's authApi.onChange listener awaits
+    // store.setUser(user) before deciding whether to land on '/app' or
+    // '/onboarding'. Navigating immediately here used to race ahead of that
+    // (issue #271): the router could run the '/app' or '/onboarding' guard
+    // before currentUser/store state were ready, sending a returning
+    // account's sign-in back to '/signin' with the "Signed in…" toast stuck
+    // on screen. Let the listener make the one authoritative navigation call.
   } catch (error) {
     message.textContent = authErrorMessage(error);
     message.className = 'form-message error';
@@ -81,7 +87,12 @@ export function buildSignInForm({ prefillEmail = '', onForgotPassword }) {
       await authApi.setPersistence(rememberCheckbox.checked);
       await authApi.signIn(emailVal, passVal);
       showToast('Signed in. Syncing your roadmap…', 'success');
-      navigate('/app', true);
+      // No navigate() here — see signInAsGuest()'s comment above (issue #271):
+      // main.js's authApi.onChange listener is the one place that decides
+      // between '/app' and '/onboarding', only after store.setUser(user) has
+      // resolved. Navigating here too raced ahead of it for a returning
+      // account with real data, bouncing back to '/signin' with this toast
+      // stuck on screen.
     } catch (error) {
       message.textContent = authErrorMessage(error);
       message.className = 'form-message error';
