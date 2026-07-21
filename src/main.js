@@ -96,9 +96,34 @@ function preloadDashboardModule() {
   document.head.appendChild(link);
 }
 
+// Guards against a second (or later) authApi.onChange invocation — a real
+// occurrence, not hypothetical: Firebase's onAuthStateChanged can fire more
+// than once for what's conceptually a single sign-in (token refresh, or an
+// emulator/SDK double-emission around sign-up — tests/unit/main.test.js's
+// own "a second resolution (e.g. a token refresh)" case already exercises
+// this). A `routeAtAuthChange === route` string comparison alone isn't
+// enough to detect staleness: a *stale* callback's captured route can
+// coincidentally equal the route the user is on *now*, for an unrelated
+// reason, well after that callback's own snapshot was taken (issue #294 —
+// reproduced by tests/e2e/customRoadmapRace.test.js: a second onChange
+// invocation from signup captured routeAtAuthChange='/onboarding',
+// resolved its store.setUser() await only after the test had picked a
+// roadmap, navigated to '/app', and deliberately navigated back to
+// '/onboarding' for a second pick — at which point 'route ===
+// routeAtAuthChange' was true purely by coincidence, and the stale
+// callback force-navigated back to '/app', silently discarding the
+// deliberate '/onboarding' visit). `authChangeCallId` follows the exact
+// `stateCallId` pattern roadmapStore.js already uses for the identical
+// class of problem (see .claude/rules/roadmap-store.md's "stale-call
+// guard") — only the most recently *started* invocation is allowed to act
+// once its own await resolves; every earlier one abandons its navigation
+// decision entirely rather than risk acting on stale intent.
+let authChangeCallId = 0;
+
 // Awaits setUser so the onboarding-needed decision below always sees this
 // sign-in's resolved state (Issue #51) — never a stale value from the previous user.
 authApi.onChange(async user => {
+  const callId = ++authChangeCallId;
   currentUser = user;
   feedbackWidget._setUser(user);
   // Captured *before* the await below, specifically to detect whether the
@@ -107,6 +132,11 @@ authApi.onChange(async user => {
   // below for why this matters.
   const routeAtAuthChange = getRoute();
   await Promise.all([store.setUser(user), dailyTodoStore.setUser(user), activityLogStore.setUser(user)]);
+  // A newer onChange invocation already started (and will make its own,
+  // fresher navigation decision) — this one's view of the world is stale,
+  // abandon it entirely rather than let a coincidental route match trigger
+  // a wrong redirect.
+  if (callId !== authChangeCallId) return;
 
   const route = getRoute();
   const publicRoutes = ['/', '/signin', '/signup'];

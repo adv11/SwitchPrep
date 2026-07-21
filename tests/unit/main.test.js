@@ -11,8 +11,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../src/services/firebase.js', () => ({
   authApi: { onChange: vi.fn() },
 }));
+// A plain vi.fn() per test would be reassigned too late — main.js's
+// module-scope `const store = createRoadmapStore(...)` runs synchronously
+// at import time, before a test body gets a chance to swap the
+// implementation in. `roadmapStoreSetUser` is declared once, up front, and
+// individual tests reconfigure *its* implementation instead of replacing
+// createRoadmapStore's return value after the fact.
+const roadmapStoreSetUser = vi.fn(() => Promise.resolve());
 vi.mock('../../src/services/roadmapStore.js', () => ({
-  createRoadmapStore: () => ({ setUser: vi.fn(), getSnapshot: () => ({ onboardingDone: true }) }),
+  createRoadmapStore: () => ({ setUser: roadmapStoreSetUser, getSnapshot: () => ({ onboardingDone: true }) }),
 }));
 vi.mock('../../src/services/dailyTodoStore.js', () => ({
   createDailyTodoStore: () => ({ setUser: vi.fn() }),
@@ -38,11 +45,15 @@ vi.mock('../../src/ui/pages/signIn.js', () => ({ renderSignIn }));
 const renderDashboard = vi.fn(() => undefined);
 vi.mock('../../src/ui/pages/dashboard.js', () => ({ renderDashboard }));
 
+const renderOnboarding = vi.fn(() => undefined);
+vi.mock('../../src/ui/pages/onboarding.js', () => ({ renderOnboarding }));
+
 beforeEach(() => {
   vi.resetModules();
   signInCleanup.mockClear();
   renderSignIn.mockClear();
   renderDashboard.mockClear();
+  roadmapStoreSetUser.mockReset().mockImplementation(() => Promise.resolve());
   document.body.innerHTML = '<div id="app"></div>';
   window.location.hash = '';
 });
@@ -96,5 +107,50 @@ describe('main.js lazy route registration (issue #137)', () => {
     // duplicate hint.
     await onAuthChange({ uid: 'test-uid' });
     expect(document.head.querySelectorAll('link[rel="modulepreload"][href*="dashboard.js"]')).toHaveLength(1);
+  });
+
+  it('a stale onChange invocation must not force-navigate away from a route the user deliberately (re-)entered after it started (issue #294)', async () => {
+    const { authApi } = await import('../../src/services/firebase.js');
+    // Control exactly when each onChange invocation's own store.setUser()
+    // resolves, so the first ("stale") call can be made to resolve *after*
+    // the second — reproducing the real race: two onChange invocations for
+    // conceptually one sign-in (e.g. an emulator/SDK double-emission), the
+    // first slower than the second.
+    let resolveFirst;
+    const firstSetUser = new Promise(resolve => { resolveFirst = resolve; });
+    roadmapStoreSetUser
+      .mockImplementationOnce(() => firstSetUser)
+      .mockImplementation(() => Promise.resolve());
+
+    window.location.hash = '#/signin';
+    await import('../../src/main.js');
+    await vi.waitFor(() => expect(renderSignIn).toHaveBeenCalled());
+
+    const onAuthChange = authApi.onChange.mock.calls[0][0];
+
+    // Invocation 1 ("stale") starts while the route is '/onboarding' —
+    // matches the real repro where a prior onboarding visit is still the
+    // current route when this callback's async work begins.
+    window.location.hash = '#/onboarding';
+    const firstCall = onAuthChange({ uid: 'test-uid' });
+
+    // Invocation 2 starts and resolves immediately (its own setUser() is
+    // already the fallback `Promise.resolve()`), landing on '/app' first —
+    // simulating the user picking a roadmap and navigating there.
+    await onAuthChange({ uid: 'test-uid' });
+    window.location.hash = '#/app';
+
+    // The user (or a test) deliberately re-enters '/onboarding' — same
+    // route the still-pending first invocation captured at its own start.
+    window.location.hash = '#/onboarding';
+
+    // Now let the stale first invocation's setUser() finally resolve. Its
+    // captured routeAtAuthChange ('/onboarding') now coincidentally matches
+    // the *current* route again, for an unrelated reason — it must not act
+    // on that coincidence.
+    resolveFirst();
+    await firstCall;
+
+    expect(window.location.hash).toBe('#/onboarding');
   });
 });

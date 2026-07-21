@@ -4236,3 +4236,31 @@ not something the app loads. No component, page, or `app.css` rule changed in th
 that intentionally starts in Phase 1, so this PR carries zero visual or behavioral risk
 while still making the ruleset enforceable immediately for any UI work that happens to
 land before Phase 1 merges.
+
+### 2026-07-21 — Issue #294 — `main.js`'s auth-redirect staleness guard was route-string-based, not call-identity-based
+
+Root-caused via a real captured Playwright trace (made possible by this same issue's
+artifact-capture fix, `playwright.config.js`/`ci.yml`) after `tests/e2e/
+customRoadmapRace.test.js` flaked on ~5/6 CI runs across three unrelated PRs. The
+trace's page snapshot at the moment of failure showed the app sitting on `/app`
+(dashboard) instead of the `/onboarding` page the test had just deliberately navigated
+to — `main.js`'s `authApi.onChange` handler had force-navigated back. The existing
+staleness guard (`route === routeAtAuthChange`, added for issue #234) only detects
+"nothing navigated during my own await" by comparing route *strings* — it cannot
+distinguish that from "something navigated away and back to the same string, or a
+different `onChange` invocation captured this same string at a different time." A
+second `onChange` invocation (Firebase can fire `onAuthStateChanged` more than once for
+one conceptual sign-in — already anticipated by `tests/unit/main.test.js`'s prior "token
+refresh" test) captured `routeAtAuthChange='/onboarding'` during signup, then resolved
+its own `store.setUser()` await only after the test had picked a roadmap, moved to
+`/app`, and deliberately gone back to `/onboarding` — at which point the string
+comparison was coincidentally true again, and the stale callback won the race. Fixed
+with `authChangeCallId`, an incrementing counter checked after the await — the same
+`stateCallId` pattern `roadmapStore.js` already documents (`.claude/rules/
+roadmap-store.md`) for the identical class of problem — so only the most recently
+*started* invocation can act; every earlier one abandons its decision once superseded,
+regardless of what route string it happens to land on. `tests/unit/main.test.js` gained
+a regression test using a controllable `roadmapStoreSetUser` mock (reconfigurable per
+test, since `main.js`'s `const store = createRoadmapStore(...)` runs at module-import
+time, before a test body could otherwise swap the mock's return value) — verified to
+fail against the pre-fix code and pass against the fix.
