@@ -78,7 +78,25 @@ Rules:
 - `::selection`: 30% accent tint. Disabled: 45% opacity.
 - Respect `prefers-reduced-motion`; transitions ≤ 200ms, opacity/transform only.
 
-## 7. Review checklist (gate every UI PR on this)
+## 7. Motion
+
+- Transitions: opacity/transform only, 120–200ms, `ease-out`. No bounce, spring, or parallax.
+- Route changes keep the existing `fade-in` convention (opacity only).
+- Count-up numerals (`countUp.js`) stay — duration ≤ 600ms.
+- Completion celebration: confetti particles become **squares** in the accent ramp colors (no circles, no gold); respect `prefers-reduced-motion` (skip entirely).
+- Feature tour spotlight: squared cutout, 2px accent outline, ink scrim at 50%; tooltip card is a flat surface with `--shadow-lg`.
+- Skeletons/loading: flat `neutral-200` blocks, no shimmer gradients — a simple opacity pulse.
+
+## 8. Long-tail surfaces
+
+- Empty states (`emptyState.js`): kicker + Archivo 800 heading + one body line + one primary action, flush-left inside a 2px-ruled cell. No illustrations.
+- Avatars (`avatar.js`): square, ink fill, ground-colored Archivo 800 initial.
+- Notification badge: square accent dot, no pill.
+- Share card / PDF print (`shareCard.js`, `printRoadmap.js`): same tokens on white; brand triangle + wordmark header, 2px rules; print stays black-ink friendly (accent only for the triangle and priority tags).
+- PWA/meta: favicon + app icons = red triangle on `#F3F2F2` (dark: on `#141312`); `<meta name="theme-color">` = `#EC3013`; og-image rebuilt in Archivo 800 with the red poster style.
+- Emoji: never in UI copy or icons.
+
+## 9. Review checklist (gate every UI PR on this)
 
 - [ ] No new hex values outside the token sheet
 - [ ] No border-radius > 0
