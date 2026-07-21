@@ -89,7 +89,8 @@ export function renderSignUp(app, { user }) {
     setButtonLoading(submitBtn, true, 'Creating account…');
     try {
       const current = auth.currentUser;
-      if (current?.isAnonymous) {
+      const wasLinkingGuest = current?.isAnonymous;
+      if (wasLinkingGuest) {
         await authApi.linkGuest(emailVal, passVal);
       } else {
         await authApi.signUp(emailVal, passVal);
@@ -97,7 +98,21 @@ export function renderSignUp(app, { user }) {
       // Best-effort — don't block sign-up if this fails (e.g. emulator not configured)
       try { await authApi.sendVerificationEmail(); } catch { /* ignore */ }
       showToast('Account created. Check your inbox to verify your email.', 'success');
-      navigate('/app', true);
+      if (wasLinkingGuest) {
+        // linkWithCredential() upgrades the existing anonymous user in
+        // place (same uid, no sign-out/sign-in transition), so it does not
+        // reliably re-fire main.js's authApi.onChange listener the way
+        // signUp()/guest() do — this is the one path that still needs its
+        // own navigate() call. There's also no new roadmap data to wait
+        // for: this uid's store state was already synced when the guest
+        // session started. See issue #271 for why the other paths below no
+        // longer navigate directly.
+        navigate('/app', true);
+      }
+      // Otherwise (a brand-new account), no navigate() here — main.js's
+      // authApi.onChange listener awaits store.setUser(user) before
+      // deciding between '/app' and '/onboarding'; navigating immediately
+      // here used to race ahead of that (issue #271).
     } catch (error) {
       message.textContent = authErrorMessage(error);
       message.className = 'form-message error';
@@ -113,7 +128,7 @@ export function renderSignUp(app, { user }) {
     try {
       await authApi.guest();
       showToast('Guest session started. Create an account anytime to keep progress.', 'info');
-      navigate('/app', true);
+      // No navigate() here — see handleSubmit's comment above (issue #271).
     } catch (error) {
       message.textContent = authErrorMessage(error);
       message.className = 'form-message error';

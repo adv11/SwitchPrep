@@ -56,9 +56,8 @@ describe('sign-up page — email verification', () => {
     await vi.waitFor(() => expect(authApi.sendVerificationEmail).toHaveBeenCalledOnce());
   });
 
-  it('still navigates to /app if sendVerificationEmail throws', async () => {
-    const { app, authApi } = await setup();
-    const { navigate } = await import('../../src/ui/router.js');
+  it('still shows the success toast if sendVerificationEmail throws', async () => {
+    const { app, authApi, showToast } = await setup();
     authApi.signUp.mockResolvedValue({});
     authApi.sendVerificationEmail.mockRejectedValue(new Error('email send failed'));
 
@@ -66,7 +65,9 @@ describe('sign-up page — email verification', () => {
     fillPasswordFields(app, 'password123');
     app.querySelector('form').requestSubmit();
 
-    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/app', true));
+    await vi.waitFor(() => expect(showToast).toHaveBeenCalledWith(
+      'Account created. Check your inbox to verify your email.', 'success'
+    ));
   });
 
   it('shows toast with verification mention on success', async () => {

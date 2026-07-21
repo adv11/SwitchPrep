@@ -8,14 +8,12 @@ import { createVerificationBanner } from '../components/verificationBanner.js';
 import { createBackupReminderBanner } from '../components/backupReminderBanner.js';
 import { maybeShowGuestDataRiskNudge } from '../components/guestDataRiskNudge.js';
 import { confirmDialog } from '../components/confirmDialog.js';
-import { openDeleteAccountModal } from '../components/deleteAccountModal.js';
 import { readDefaultFilterPreference } from '../utils/defaultFilterPreference.js';
 import { createSidebar } from '../components/sidebar.js';
 import { createTopbar } from '../components/topbar.js';
 import { getTemplate } from '../../data/templates/index.js';
 import { MAX_TITLE_LENGTH } from '../../core/roadmap/limits.js';
 import { isExpired, remainingMs, formatRemaining, remainingBand } from '../utils/dailyTodo.js';
-import { openAddToDailyTodoModal } from '../components/addToDailyTodoModal.js';
 import { MAX_ACTIVE_TODOS } from '../../core/dailyTodo/limits.js';
 import { createProgressRing } from '../components/progressRing.js';
 import { animateCountUp } from '../../utils/countUp.js';
@@ -29,9 +27,21 @@ import { isReviewDue, getReviewDueItems, groupReviewDueItemsByTag } from '../../
 import { isRoadmapComplete, getCompletedPhaseTitles } from '../../core/roadmap/completionCelebration.js';
 import { hasShownRoadmapCelebration, hasShownPhaseCelebration, markRoadmapCelebrationShown, markPhaseCelebrationShown } from '../../services/celebrationShownStore.js';
 import { mountPrintSnapshot, attachPrintCleanup } from '../utils/printRoadmap.js';
-import { triggerConfetti } from '../components/confetti.js';
-import { openBadgeShareModal } from '../components/shareModal.js';
-import { startTour } from '../components/featureTour.js';
+// openAddToDailyTodoModal, openDeleteAccountModal, triggerConfetti,
+// openBadgeShareModal, and startTour are all dynamically imported below,
+// right where each is used — every one of them only ever runs behind a rare,
+// later-triggered user action (adding a daily todo, deleting the account,
+// a phase/roadmap completion celebration, the first-time/replayed feature
+// tour), never during the dashboard's initial render. With no bundler, every
+// static top-of-file import here is one more fetch this route's module-graph
+// waterfall has to resolve before first paint, so keeping these lazy shrinks
+// that waterfall for the common case (a load that never touches any of
+// them) without changing behavior for the rare case that does.
+// mountPrintSnapshot/attachPrintCleanup above stay a static import
+// deliberately — they're wired to the native `beforeprint` event, and an
+// async import() there risks losing the race against the browser's own
+// print-capture timing (see this file's `handleBeforePrint` comment and
+// `.claude/rules/ui-styling.md`'s already-documented print-timing bugs).
 
 // Issue #12B Phase 3 — resource-count badge type breakdown. Ordered so the
 // "most valuable" type (a video worth watching over a plain article, etc.)
@@ -725,6 +735,7 @@ export function renderDashboard(app, { user, store, dailyTodoStore }) {
   // roadmap (issue #56 follow-up).
   async function handleAddToDailyTodo(item) {
     if (!dailyTodoStore) return;
+    const { openAddToDailyTodoModal } = await import('../components/addToDailyTodoModal.js');
     const result = await openAddToDailyTodoModal({ topicTitle: item.title });
     if (!result) return;
     const added = dailyTodoStore.addTodo({
@@ -1023,8 +1034,10 @@ export function renderDashboard(app, { user, store, dailyTodoStore }) {
   function celebrate(kind, label, confettiAlreadyFired) {
     const message = kind === 'roadmap' ? `Roadmap complete! You finished every topic in "${label}".` : `Phase complete: "${label}".`;
     showToast(message, 'success');
-    if (!confettiAlreadyFired) triggerConfetti();
-    openBadgeShareModal(kind, label).catch(() => {});
+    if (!confettiAlreadyFired) {
+      import('../components/confetti.js').then(({ triggerConfetti }) => triggerConfetti());
+    }
+    import('../components/shareModal.js').then(({ openBadgeShareModal }) => openBadgeShareModal(kind, label).catch(() => {}));
     return true;
   }
 
@@ -1298,8 +1311,9 @@ export function renderDashboard(app, { user, store, dailyTodoStore }) {
   // tourDone is already false there. Any tour already on screen is torn down
   // first so a stray double-invocation can't leave two sets of listeners
   // running.
-  function runFeatureTour() {
+  async function runFeatureTour() {
     activeTourCleanup?.();
+    const { startTour } = await import('../components/featureTour.js');
     activeTourCleanup = startTour(buildTourSteps(), {
       onEnd: () => {
         activeTourCleanup = null;
@@ -1320,7 +1334,7 @@ export function renderDashboard(app, { user, store, dailyTodoStore }) {
     user,
     store,
     dailyTodoStore,
-    onDeleteAccount: user.isAnonymous ? null : () => openDeleteAccountModal(),
+    onDeleteAccount: user.isAnonymous ? null : () => import('../components/deleteAccountModal.js').then(({ openDeleteAccountModal }) => openDeleteAccountModal()),
     // Issue #17 — only the dashboard's own sidebar instance offers this
     // (progress.js/settings.js/onboarding.js's sidebars don't pass it) since
     // every spotlight target above only exists on this page.
