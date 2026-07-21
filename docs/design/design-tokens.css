@@ -1,0 +1,129 @@
+/* Ascent v2 design tokens — "Signal Red" light / "Ink" dark.
+   Drop-in replacement for the token block at the top of src/styles/app.css.
+   Variable names match the existing codebase where a role already exists. */
+
+:root {
+  --color-bg:             #F3F2F2;
+  --color-surface:        #EAE9E9;
+  --color-surface-raised: #F8F4F4;
+  --color-border:         color-mix(in srgb, #201E1D 40%, transparent); /* = --color-divider, 2px section rules */
+  --color-border-strong:  #201E1D;
+  --color-divider:        color-mix(in srgb, #201E1D 40%, transparent);
+  --color-text:           #201E1D;
+  --color-text-muted:     color-mix(in srgb, #201E1D 60%, transparent);
+  --color-text-faint:     color-mix(in srgb, #201E1D 45%, transparent);
+
+  /* Accent ramp (OKLCH-derived) — replaces --color-brand-gold / --color-brand-rose */
+  --color-accent:      #EC3013;
+  --color-accent-100:  #FFF2EF;
+  --color-accent-200:  #FFE0D9;
+  --color-accent-300:  #FFC4B8;
+  --color-accent-400:  #FF9783;
+  --color-accent-500:  #FF563C;
+  --color-accent-600:  #DD2B0F;  /* hover on filled controls */
+  --color-accent-700:  #AE1800;  /* accent as paragraph-size text */
+  --color-accent-800:  #7C1405;  /* text on accent-100 tints */
+  --color-accent-900:  #4D170E;
+
+  /* Neutral ramp */
+  --color-neutral-100: #F8F4F4;
+  --color-neutral-200: #EAE7E7;
+  --color-neutral-300: #D7D3D3;
+  --color-neutral-400: #BAB6B6;
+  --color-neutral-500: #9B9797;
+  --color-neutral-600: #7D7979;
+  --color-neutral-700: #605D5D;
+  --color-neutral-800: #444141;
+  --color-neutral-900: #2D2B2B;
+
+  /* Semantic roles collapse into the mono scheme */
+  --color-danger:      var(--color-accent-700);
+  --color-danger-bg:   var(--color-accent-100);
+  --color-success:     var(--color-neutral-800);
+  --color-success-bg:  var(--color-neutral-200);
+  --color-warning:     var(--color-accent-700);
+  --color-warning-bg:  var(--color-accent-100);
+
+  /* Priority mapping */
+  --color-p0:     var(--color-accent);
+  --color-p0-ink: var(--color-accent-800);
+  --color-p0-bg:  var(--color-accent-100);
+  --color-p1:     var(--color-accent-400);
+  --color-p1-ink: var(--color-accent-700);
+  --color-p1-bg:  var(--color-accent-100);
+  --color-p2:     var(--color-neutral-500);
+  --color-p2-ink: var(--color-neutral-800);
+  --color-p2-bg:  var(--color-neutral-200);
+
+  /* Text on solid accent fills (buttons) */
+  --color-ink-on-accent: #F3F2F2;
+
+  /* Heatmap — 5 hard steps, no interpolation */
+  --heat-0: var(--color-neutral-200);
+  --heat-1: #FFC4B8;
+  --heat-2: #FF9783;
+  --heat-3: #FF563C;
+  --heat-4: #DD2B0F;
+
+  /* Type */
+  --font-heading: "Archivo", system-ui, sans-serif;
+  --font-body:    "Archivo", system-ui, sans-serif;
+  --font-heading-weight: 800;
+
+  /* Structure — radius is 0 by decree; keep the vars so nothing breaks */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+
+  --shadow-sm: 0 1px 2px  color-mix(in srgb, #2D2B2B 14%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #2D2B2B 16%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2D2B2B 22%, transparent);
+
+  /* DELETED (do not reintroduce): --color-brand-gold, --color-brand-rose,
+     --gradient-alpenglow, --accent-50/400/500 (orange set), bg-grid-glow. */
+}
+
+:root[data-theme='dark'] {
+  --color-bg:             #141312;
+  --color-surface:        #1E1C1B;
+  --color-surface-raised: #252221;
+  --color-border:         color-mix(in srgb, #F1EFED 32%, transparent);
+  --color-border-strong:  #F1EFED;
+  --color-divider:        color-mix(in srgb, #F1EFED 32%, transparent);
+  --color-text:           #F1EFED;
+  --color-text-muted:     color-mix(in srgb, #F1EFED 60%, transparent);
+  --color-text-faint:     color-mix(in srgb, #F1EFED 45%, transparent);
+
+  --color-accent:      #FF563C;
+  --color-accent-100:  #38201A;
+  --color-accent-200:  #4D170E;
+  --color-accent-300:  #7C1405;
+  --color-accent-400:  #DD2B0F;
+  --color-accent-500:  #FF563C;
+  --color-accent-600:  #FF6D55;  /* hover steps LIGHTER on dark ground */
+  --color-accent-700:  #FFC4B8;  /* accent as text */
+  --color-accent-800:  #FFC4B8;
+  --color-accent-900:  #FFE0D9;
+
+  --color-neutral-100: #1E1C1B;
+  --color-neutral-200: #2B2827;
+  --color-neutral-300: #3A3634;
+  --color-neutral-400: #4A4643;
+  --color-neutral-500: #6B6663;
+  --color-neutral-600: #8C8783;
+  --color-neutral-700: #ADA8A4;
+  --color-neutral-800: #D7D3D3;
+  --color-neutral-900: #EAE7E7;
+
+  --color-ink-on-accent: #141312;
+
+  --heat-0: var(--color-neutral-200);
+  --heat-1: #4D170E;
+  --heat-2: #AE1800;
+  --heat-3: #FF563C;
+  --heat-4: #FF9783;
+
+  --shadow-sm: 0 1px 2px  rgba(0,0,0,.5);
+  --shadow-md: 0 3px 10px rgba(0,0,0,.55);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,.65);
+}

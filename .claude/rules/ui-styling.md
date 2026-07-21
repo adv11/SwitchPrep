@@ -16,6 +16,13 @@ exist because a specific real bug (flicker, clipped modal, oversized/undersized 
 target, iOS auto-zoom, stretched card) already happened once and got fixed with a rule,
 not just a one-off patch.
 
+**Exact color tokens, type scale, radius, and component visual rules now live in
+`.claude/rules/design-system.md` (issue #289's v2 "Modernist" identity) — that file wins
+on anything it specifies (e.g. radius is 0, not the older rounded-corner values this file
+used to imply). This file remains the source of truth for the structural/behavioral
+conventions below (theming mechanism, card-grid layout, breakpoints, touch/hover,
+safe-area, modal overflow), which don't change with the visual refresh.
+
 **Theming**: The no-FOUC theme bootstrap lives in `src/services/themeBootstrap.js` —
 a classic `<script src="...">` (no `defer`/`async`/`type="module"`) that reads
 `localStorage` and sets `data-theme` on `<html>` synchronously before CSS loads. It was

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Docs
+- **Committed the binding v2 "Modernist" design system as `.claude/rules/design-system.md`** (issue #289, Phase 0) — Archivo type, single red accent (`#EC3013` light / `#FF563C` dark), zero corner radius, 2px section rules, flush-left everything, full color/type/structure/component/interaction spec and a PR review checklist. Referenced from root `CLAUDE.md`'s Agent memory map and cross-referenced from `.claude/rules/ui-styling.md`, which now defers to it for exact color/radius/type values while remaining the source of truth for structural/behavioral layout conventions. `docs/design/design-tokens.css` is the corresponding drop-in CSS token reference, applied to `src/styles/app.css` in Phase 1. No visual change yet — the actual token swap and per-screen restyle land in the phases that follow.
+
 ### Added
 - **Settings → Profile now has a "Name" field** (issue #267). Backed directly by Firebase Auth's own `updateProfile({ displayName })` — no new Realtime Database schema, no profile-picture upload (deliberately out of scope, to avoid Cloud Storage cost). `authApi.updateProfile(displayName)` is a thin client-side wrapper (`src/services/firebase.js`); `settings.js`'s Profile section gets a "Change name" row using the same inline-expand pattern as Email/Password. `avatar.js`'s `initialsFor()` now prefers `user.displayName` over parsing the email local-part when a name is set, and `sidebar.js`/`onboarding.js`'s identity label prefers `displayName` over the email address when set.
 
