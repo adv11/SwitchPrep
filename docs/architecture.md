@@ -4212,3 +4212,27 @@ block, so widening the *default* wasn't necessary. No workflow YAML changed. Wor
 knowing for any future "workflow X can't create/approve a PR despite `permissions:
 pull-requests: write`" report — check this repo setting before re-diagnosing the
 workflow file itself.
+
+### 2026-07-21 — Issue #289 (Phase 0) — Committed the v2 "Modernist" design system as rules-as-code
+
+A visual redesign explored via the Claude Design portal (flat/architectural identity:
+single **Archivo** type family, one red accent per theme — `#EC3013` light "Signal Red" /
+`#FF563C` dark "Ink" — zero corner radius, 2px section rules, flush-left everything,
+Lucide icons) is landing as a phased rollout (issue #289, Phases 0–5, one PR per phase).
+This entry covers Phase 0 only: making the ruleset itself binding *before* any pixel
+changes, so every subsequent phase (and any unrelated UI PR that lands mid-rollout) is
+gated on the same source of truth instead of the mockups living only in an issue
+description. Added `.claude/rules/design-system.md` (full token table, type scale,
+structure/component/interaction rules, and a PR review checklist) and pointed to it from
+root `CLAUDE.md`'s Agent memory map, using the same path-trigger as the existing
+`.claude/rules/ui-styling.md`. `ui-styling.md` itself now carries a short cross-reference
+noting that `design-system.md` wins on exact color/radius/type values (e.g. radius is
+now 0, superseding the rounded-corner values `ui-styling.md` used to imply) while
+remaining the source of truth for structural/behavioral conventions (theming mechanism,
+card-grid layout, breakpoints, touch/hover, safe-area, modal overflow) that don't change
+with the visual refresh. `docs/design/design-tokens.css` was added as the literal
+drop-in CSS token block Phase 1 applies to `src/styles/app.css`; it is a reference doc,
+not something the app loads. No component, page, or `app.css` rule changed in this PR —
+that intentionally starts in Phase 1, so this PR carries zero visual or behavioral risk
+while still making the ruleset enforceable immediately for any UI work that happens to
+land before Phase 1 merges.
