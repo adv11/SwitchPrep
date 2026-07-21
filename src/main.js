@@ -101,42 +101,53 @@ function preloadDashboardModule() {
 // than once for what's conceptually a single sign-in (token refresh, or an
 // emulator/SDK double-emission around sign-up — tests/unit/main.test.js's
 // own "a second resolution (e.g. a token refresh)" case already exercises
-// this). A `routeAtAuthChange === route` string comparison alone isn't
-// enough to detect staleness: a *stale* callback's captured route can
-// coincidentally equal the route the user is on *now*, for an unrelated
-// reason, well after that callback's own snapshot was taken (issue #294 —
-// reproduced by tests/e2e/customRoadmapRace.test.js: a second onChange
-// invocation from signup captured routeAtAuthChange='/onboarding',
-// resolved its store.setUser() await only after the test had picked a
-// roadmap, navigated to '/app', and deliberately navigated back to
-// '/onboarding' for a second pick — at which point 'route ===
-// routeAtAuthChange' was true purely by coincidence, and the stale
-// callback force-navigated back to '/app', silently discarding the
-// deliberate '/onboarding' visit). `authChangeCallId` follows the exact
-// `stateCallId` pattern roadmapStore.js already uses for the identical
-// class of problem (see .claude/rules/roadmap-store.md's "stale-call
-// guard") — only the most recently *started* invocation is allowed to act
-// once its own await resolves; every earlier one abandons its navigation
-// decision entirely rather than risk acting on stale intent.
+// this). `authChangeCallId` follows the exact `stateCallId` pattern
+// roadmapStore.js already uses for this class of problem (see
+// .claude/rules/roadmap-store.md's "stale-call guard") — only the most
+// recently *started* invocation is allowed to act once its own await
+// resolves; every earlier one abandons its navigation decision entirely.
 let authChangeCallId = 0;
+
+// The actual root cause of issue #294 (tests/e2e/customRoadmapRace.test.js
+// flaking ~5/6 CI runs): the "already-onboarded, redirect off /onboarding
+// or a public route to /app" logic below used to run on *every* onChange
+// invocation, including a token-refresh (or emulator double-emission)
+// re-fire for a uid that was already signed in — not just a genuine
+// sign-in transition. Two earlier fix attempts (a route-string comparison,
+// then a navigation-generation counter — both still present below, both
+// genuinely correct for the races they target) treated this as a
+// staleness/timing problem and didn't fix the CI repro, because the
+// invocation that does the damage isn't stale at all: it's a perfectly
+// "current" re-fire for the same uid that happens to land while the user
+// is deliberately sitting on '/onboarding' again (e.g. picking a second
+// roadmap) — no coincidence or race required. `lastAuthUid` (a sentinel,
+// not `undefined`, so the very first boot call — uid transitioning from
+// "never seen" to whatever it is — always counts as a genuine sign-in)
+// tracks the most recently *seen* uid; `isSignInTransition` is captured
+// synchronously at the very top of each invocation, before any await, so
+// it reflects whether *this specific call* represents an actual uid change
+// — a token refresh for an unchanged uid is never a sign-in transition, no
+// matter how many other invocations race around it.
+const NO_UID_SEEN_YET = Symbol('no-uid-seen-yet');
+let lastAuthUid = NO_UID_SEEN_YET;
 
 // Awaits setUser so the onboarding-needed decision below always sees this
 // sign-in's resolved state (Issue #51) — never a stale value from the previous user.
 authApi.onChange(async user => {
   const callId = ++authChangeCallId;
+  const isSignInTransition = user?.uid !== lastAuthUid;
+  lastAuthUid = user?.uid ?? null;
   currentUser = user;
   feedbackWidget._setUser(user);
   // Captured *before* the await below, specifically to detect whether the
   // user (or, in a test, an explicit page.goto) navigated elsewhere while
-  // this auth resolution was still in flight — see the staleness check
-  // below for why this matters. `navGenAtAuthChange` (not just the route
-  // string) is the real signal: router.js's getNavGeneration() bumps on
-  // *every* processed navigation, so a round trip back to the exact same
-  // route string (e.g. /onboarding -> /app -> /onboarding, the second half
-  // of issue #294's repro — a single onChange invocation's own await can
-  // span this whole round trip with no second invocation involved at all)
-  // still registers as "something navigated," where a bare route-string
-  // comparison would wrongly read it as "nothing changed."
+  // this auth resolution was still in flight. router.js's getNavGeneration()
+  // bumps on *every* processed navigation, so a round trip back to the
+  // exact same route string (e.g. /onboarding -> /app -> /onboarding) still
+  // registers as "something navigated," where a bare route-string
+  // comparison would wrongly read it as "nothing changed." Kept alongside
+  // `isSignInTransition` below — each guards a genuinely different variant
+  // of "should this invocation be allowed to force-navigate."
   const navGenAtAuthChange = getNavGeneration();
   await Promise.all([store.setUser(user), dailyTodoStore.setUser(user), activityLogStore.setUser(user)]);
   // A newer onChange invocation already started (and will make its own,
@@ -165,23 +176,24 @@ authApi.onChange(async user => {
     return;
   }
   // Only auto-redirect an already-onboarded user off a public route or the
-  // onboarding picker if *no navigation of any kind* happened since this
-  // callback started — a real, reproduced race (tests/e2e/
-  // customRoadmapRace.test.js): store.setUser()'s Firebase round trip can
-  // still be in flight after signIn.js's own success handler has already
-  // navigated to '/app', and if the user (or a test) then deliberately
-  // re-enters '/onboarding' — e.g. the dashboard's "Switch template" link —
-  // while this callback is still awaiting, it used to read the *current*
-  // route once the await resolved and force-navigate back to '/app',
-  // silently clobbering that deliberate navigation. Checking
-  // `getNavGeneration() === navGenAtAuthChange` (not just `route ===
-  // routeAtAuthChange`) is what actually closes this: a route string alone
-  // can't tell "nothing navigated" apart from "navigated away and back to
-  // this same string," which is exactly the shape issue #294's repro takes
-  // (picked a roadmap, landed on '/app', deliberately went back to
-  // '/onboarding' — same string this callback started on, but very much
-  // navigated).
-  if (getNavGeneration() === navGenAtAuthChange && (publicRoutes.includes(route) || route === '/onboarding')) {
+  // onboarding picker on an actual sign-in transition (`isSignInTransition`)
+  // — never on a re-fire for a uid that was already signed in (a token
+  // refresh, or an emulator/SDK double-emission), which must be free to
+  // land while the user is deliberately sitting on '/onboarding' (e.g.
+  // picking a second roadmap) without getting bounced to '/app'. This is
+  // the actual fix for issue #294's CI repro (tests/e2e/
+  // customRoadmapRace.test.js) — two earlier attempts here treated it as a
+  // staleness/timing problem (a route-string comparison, then
+  // `getNavGeneration()`, both kept below as they're still independently
+  // correct for the races they target) and didn't close the real gap: the
+  // invocation that does the damage is a perfectly *current*, non-stale
+  // re-fire for an unchanged uid, not a delayed/superseded one.
+  // `getNavGeneration() === navGenAtAuthChange` still matters on top of
+  // that: even on a genuine sign-in transition, don't clobber a navigation
+  // that happened to race with this callback's own store.setUser() await
+  // (the original issue #234 scenario).
+  if (isSignInTransition && getNavGeneration() === navGenAtAuthChange
+    && (publicRoutes.includes(route) || route === '/onboarding')) {
     preloadDashboardModule();
     navigate('/app', true);
   }

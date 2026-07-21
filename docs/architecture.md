@@ -4286,3 +4286,30 @@ jsdom's `location.hash` setter queues its own async `hashchange` dispatch indepe
 an explicit one, so call counts are unreliable in this test file (a pattern its own
 earlier tests already flag). Verified to fail against the intermediate (call-id-only)
 fix and pass against the final one.
+
+**Second follow-up, same day — the actual fix.** A *third* captured trace, from a CI
+run already carrying both the `authChangeCallId` and `getNavGeneration()` fixes above,
+reproduced the identical bounce-to-`/app` symptom again. Both prior fixes were genuinely
+correct for the races they targeted and are both kept, but neither was the real repro:
+the invocation causing the damage isn't stale (a newer call hasn't superseded it) and
+isn't racing a navigation (nothing moved during its own await) — it's a perfectly
+*current* re-fire of `onChange` for a uid that was already signed in (a token refresh,
+or an emulator/SDK double-emission), landing while the user is simply, currently sitting
+on `/onboarding` with no navigation involved anywhere in the sequence. The
+"already-onboarded, redirect off `/onboarding`/a public route" logic had never
+distinguished a genuine sign-in transition from any other re-fire for the same uid — by
+design, until this fix, *any* `onChange` resolving while camped on `/onboarding` bounced
+the user to `/app`, staleness guards notwithstanding. Fixed with `isSignInTransition`: a
+module-level `lastAuthUid` (a `Symbol()` sentinel distinguishes "never seen a uid yet"
+from a genuine `null`/signed-out state) captured synchronously at the top of each
+invocation, before any `await` — the redirect block now additionally requires
+`isSignInTransition` to be true, so a same-uid re-fire can never trigger it regardless of
+route, navigation generation, or call ordering. `tests/unit/main.test.js` gained a third
+regression test for this exact shape (a genuine sign-in, then a deliberate navigation to
+`/onboarding`, then a second same-uid `onChange` call with no intervening navigation) —
+verified to fail against the two-guards-but-no-`isSignInTransition` code and pass against
+the final fix. All three guards (`authChangeCallId`, `getNavGeneration()`,
+`isSignInTransition`) are independently necessary and are all kept — each closes a
+genuinely different variant of "should this invocation be allowed to force-navigate,"
+and removing any one of them reopens exactly the race its own regression test exists to
+catch.

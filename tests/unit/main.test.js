@@ -202,4 +202,34 @@ describe('main.js lazy route registration (issue #137)', () => {
 
     expect(window.location.hash).toBe('#/onboarding');
   });
+
+  it('a same-uid onChange re-fire (e.g. a token refresh) must not bounce the user off a route they are currently, deliberately sitting on (issue #294, the actual CI root cause)', async () => {
+    // Neither guard above (authChangeCallId, getNavGeneration) catches
+    // this — this invocation isn't stale and there's no round trip: it's a
+    // perfectly *current* re-fire for a uid that was already signed in,
+    // landing while the user is simply, currently on '/onboarding' (no
+    // navigation before or after it). Only isSignInTransition distinguishes
+    // this from a genuine sign-in.
+    const { authApi } = await import('../../src/services/firebase.js');
+
+    window.location.hash = '#/signin';
+    await import('../../src/main.js');
+    await vi.waitFor(() => expect(renderSignIn).toHaveBeenCalled());
+
+    const onAuthChange = authApi.onChange.mock.calls[0][0];
+
+    // Genuine sign-in — establishes lastAuthUid.
+    await onAuthChange({ uid: 'test-uid' });
+
+    // The user deliberately navigates to '/onboarding' (e.g. to pick a
+    // second roadmap) and stays there — no further navigation.
+    window.location.hash = '#/onboarding';
+    await vi.waitFor(() => expect(renderOnboarding).toHaveBeenCalled());
+
+    // A token refresh (or any other re-fire) for the *same* uid resolves
+    // instantly while the user is still sitting on '/onboarding'.
+    await onAuthChange({ uid: 'test-uid' });
+
+    expect(window.location.hash).toBe('#/onboarding');
+  });
 });
