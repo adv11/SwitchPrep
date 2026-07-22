@@ -32,14 +32,28 @@ test.describe('phase-card expand/collapse animation (issue #6 Phase 7)', () => {
     // by the time the height was actually sampled the (short) animation had
     // already finished — reading a legitimate 0 and failing an assertion whose
     // premise (mid-flight) no longer held, on every retry, since the same
-    // machine load caused the same overrun each time. Querying `getAnimations()`
-    // for a `running` WAAPI animation right after `click()` resolves is
-    // deterministic instead — a fresh `Element.animate()` call is synchronously
-    // `running`, independent of frame timing or how long the round-trip to read
-    // it back takes.
+    // machine load caused the same overrun each time.
+    //
+    // A `playState === 'running'` check (an earlier version of this fix) traded
+    // that race for a different one: playState is a *live* snapshot, and the
+    // sibling "expand" test below kept failing 3/3 on CI with it (`false`, no
+    // race-y intermediate wait in the way) even though the identical shape here
+    // passes reliably — most likely the CI runner's headless Chromium doesn't
+    // always report a freshly-created animation as synchronously 'running' the
+    // instant `.animate()` returns (a real, engine-level possibility per the
+    // Web Animations spec — a "pending" play state is valid until the browser's
+    // next rendering opportunity resolves the animation's start time), which
+    // this app's own dev machine testing never happened to hit. Checking the
+    // animation's own *construction* instead — a non-zero `duration` on its
+    // effect — has no such live-state timing dependency at all: it's a static
+    // property of how `.animate()` was called, true immediately and for the
+    // animation's entire lifetime regardless of playState. `reduceMotion`'s
+    // code path (dashboard.js) never calls `.animate()` at all, so this still
+    // correctly fails if the animation was skipped — the actual thing "not an
+    // instant jump" needs to prove.
     const isAnimating = await phaseBody.evaluate(el => {
       const anim = el.getAnimations()[0];
-      return !!anim && anim.playState === 'running';
+      return !!anim && anim.effect.getTiming().duration > 0;
     });
     expect(isAnimating).toBe(true);
 
@@ -63,15 +77,18 @@ test.describe('phase-card expand/collapse animation (issue #6 Phase 7)', () => {
     const phaseBody = secondCard.locator('.phase-body');
 
     await secondCard.locator('.phase-head').click();
-    await expect(secondCard).toHaveClass(/open/);
-    // Deterministic check, not a wall-clock race — see the comment on the
-    // collapse test above for why.
+    // Deterministic, live-state-independent check — see the comment on the
+    // collapse test above for the full history (a `playState === 'running'`
+    // check failed 3/3 on CI here specifically, with no intermediate wait in
+    // the way, most likely a live-state timing quirk this test's own earlier
+    // fix attempts didn't account for).
     const isAnimating = await phaseBody.evaluate(el => {
       const anim = el.getAnimations()[0];
-      return !!anim && anim.playState === 'running';
+      return !!anim && anim.effect.getTiming().duration > 0;
     });
     expect(isAnimating).toBe(true);
 
+    await expect(secondCard).toHaveClass(/open/);
     await expect(phaseBody).toBeVisible();
   });
 
