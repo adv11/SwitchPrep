@@ -1,117 +1,118 @@
 /* Ascent — production UI styles */
 
 :root {
-  /* issue #206 — "Alpenglow" redesign, full token replace (not a parallel
-     namespace — see docs/architecture.md Build Log). Every color/type/
-     spacing/radius/shadow/motion token below now carries the Alpenglow
-     spec's own name and value. Tokens the spec doesn't define keep their
-     pre-#206 name/value unchanged (icon sizes, chip box-model, heatmap
-     scale, numbered brand/accent/neutral ramps, extra easing curves) —
-     listed at the bottom of this block. Component-level rules (§3 of the
-     issue) still need a real visual pass to use these tokens correctly
-     (many will look wrong — e.g. .toast-success, .avatar — until that PR
-     lands); this block only guarantees one consistent, dangling-reference-
-     free token layer for that pass to build on. */
-  --color-bg:             #F7F5F2;
-  --color-surface:        #FFFFFF;
-  --color-surface-raised: #FCFBF9;
-  --color-border:         #E4DFD8;
-  --color-border-strong:  #D3CCC0;
-  --color-text:           #2A2420;
-  --color-text-muted:     #6B6156;
-  --color-text-faint:     #9C9184;
-  --color-brand-gold:     #D9A441;
-  --color-brand-rose:     #C15C6B;
-  --gradient-alpenglow:   linear-gradient(135deg, var(--color-brand-gold) 0%, var(--color-brand-rose) 100%);
-  /* issue #206 §5 follow-up — real feedback (screenshot): the original
-     "trail-green, not stock green" success color still read as a jarring,
-     out-of-family cool green against every other warm gold/rose/cream
-     element on screen. Retuned warmer/more olive (yellow-shifted hue,
-     similar lightness) so it reads as part of the same warm family instead
-     of a foreign accent, while staying visually distinct from
-     `--color-brand-gold`/`--color-warning` (still a real, if desaturated,
-     green — not gold). `.check-box.done` no longer reads this token at all
-     (moved to a flat `--color-brand-gold` fill in a second follow-up round,
-     see that rule's own comment) — `--color-success`/`-bg` are still used
-     elsewhere (e.g. `.toast-success`'s accent bar). */
-  --color-success:        #6E7D4F;
-  --color-success-bg:     #EBEBDE;
-  --color-warning:        #C68A3D;
-  --color-warning-bg:     #F5E9D3;
-  --color-danger:         #B0503F;
-  --color-danger-bg:      #F3E1DC;
-  --color-p0: var(--color-danger);
-  --color-p1: var(--color-warning);
-  --color-p2: var(--color-brand-gold);
-  --color-p3: var(--color-text-faint);
+  /* issue #297 — v2 "Modernist" redesign, full color/radius/shadow/heat/font
+     token replace (supersedes issue #206 "Alpenglow" the same way that pass
+     superseded every direction before it — see docs/architecture.md Build
+     Log and .claude/rules/design-system.md, the binding spec for this pass).
+     Tokens the spec doesn't define (spacing scale, rem-based type scale,
+     motion durations/easing, icon sizes, chip box-model, tracking) keep
+     their pre-#297 name/value unchanged — listed at the bottom of this
+     block, same convention #206 used. This is a Phase 1 (#297) token +
+     base-component pass only — individual page layouts are Phases 2-5
+     (#298-#301), not touched here. */
+  --color-bg:             #F3F2F2;
+  --color-surface:        #EAE9E9;
+  --color-surface-raised: #F8F4F4;
+  /* --color-border/--color-border-strong/--color-divider are aliases of the
+     same 2px-rule divider color per design-tokens.css — kept as three names
+     so every existing --color-border call site (there were ~5) keeps working
+     without a rename; --color-border-strong is a fully-opaque version for
+     rules that need to sit on top of a divider-colored border without the
+     translucency compounding (e.g. a hover state layered over a divider). */
+  --color-border:         color-mix(in srgb, #201E1D 40%, transparent);
+  --color-border-strong:  #201E1D;
+  --color-divider:        color-mix(in srgb, #201E1D 40%, transparent);
+  --color-text:           #201E1D;
+  --color-text-muted:     color-mix(in srgb, #201E1D 60%, transparent);
+  /* --color-text-faint has no exact spec value in design-system.md's token
+     table (only bg/surface/text/text-muted/divider/accent/neutral are
+     spec'd) — judgment call: same color-mix idiom as --color-text-muted,
+     one step further toward transparent, preserving the pre-#297 "faint"
+     role (e.g. .phase-index-adjacent tertiary text) rather than dropping it. */
+  --color-text-faint:     color-mix(in srgb, #201E1D 45%, transparent);
 
-  /* issue #206 follow-up (found by CI's axe accessibility gate, not the
-     original spec) — --color-brand-gold/--color-warning are ~L0.3-0.42
-     luminance, which can never reach 4.5:1 text contrast against this
-     theme's near-white --color-bg/--color-surface (max possible is ~2.1-2.8,
-     confirmed live by axe on .eyebrow/.landing-proof-text/
-     .review-due-nav-badge). These darkened "-ink" variants are for TEXT use
-     only wherever gold/warning would otherwise sit directly on this theme's
-     light surfaces — never for borders/icons/fills, which keep the vivid
-     base token. Dark theme's block below aliases these straight back to the
-     base tokens, since dark theme's near-black surfaces already pass at
-     7-13:1 with no darkening needed — verified per the same live-contrast
-     discipline `.claude/rules/ui-styling.md` already documents for every
-     other token pairing in this file. --color-p3-ink reuses
-     --color-text-muted rather than a mix, for the same reason
-     --color-text-faint itself fails (2.83:1) as real text color against
-     these surfaces — --color-text-muted is already a verified-safe token,
-     not a new derivation. */
-  --color-brand-gold-ink: color-mix(in srgb, var(--color-brand-gold) 55%, black);
-  --color-warning-ink:    color-mix(in srgb, var(--color-warning) 55%, black);
-  --color-p0-ink: var(--color-danger);
-  --color-p1-ink: var(--color-warning-ink);
-  --color-p2-ink: var(--color-brand-gold-ink);
-  --color-p3-ink: var(--color-text-muted);
-  /* issue #206 §5 follow-up — real, axe-confirmed contrast bug (not a
-     sampler artifact, unlike several others found in the same audit):
-     `.template-card-ai-badge`'s plain `var(--color-brand-rose)` text on
-     `var(--color-danger-bg)` measured 3.31:1 live via axe, failing the
-     4.5:1 minimum — same "-ink" derivation pattern as
-     `--color-brand-gold-ink` above, computed to 7.73:1 against
-     `--color-danger-bg` (#F3E1DC). */
-  --color-brand-rose-ink: color-mix(in srgb, var(--color-brand-rose) 55%, black);
+  /* Accent ramp (OKLCH-derived per design-tokens.css) — replaces
+     --color-brand-gold / --color-brand-rose / --gradient-alpenglow. */
+  --color-accent:      #EC3013;
+  --color-accent-100:  #FFF2EF;
+  --color-accent-200:  #FFE0D9;
+  --color-accent-300:  #FFC4B8;
+  --color-accent-400:  #FF9783;
+  --color-accent-500:  #FF563C;
+  --color-accent-600:  #DD2B0F;  /* hover on filled controls */
+  --color-accent-700:  #AE1800;  /* accent as paragraph-size text */
+  --color-accent-800:  #7C1405;  /* text on accent-100 tints */
+  --color-accent-900:  #4D170E;
 
-  /* issue #206 — no direct spec equivalent for these three roles (a
-     translucent glass-panel surface/border pair, and a decorative low-alpha
-     ambient glow) — kept under their pre-#206 names, retuned to the new
-     warm-neutral/gold hue instead of the old cool-teal one. Flagged for the
-     user: these four values are a judgment call, not from the spec text. */
-  --surface-glass: rgba(255, 255, 255, 0.92);
-  --border-glass: rgba(228, 223, 216, 0.9);
-  --glow-brand: rgba(217, 164, 65, 0.12);
-  --glow-accent: rgba(193, 92, 107, 0.06);
-  /* issue #206 — decorative focus-ring glow, no direct spec token name;
-     retuned from teal/lime to gold, same alpha as before (0.2). */
-  --focus: rgba(217, 164, 65, 0.2);
+  /* Neutral ramp (full --color-neutral-100...900 per design-tokens.css) */
+  --color-neutral-100: #F8F4F4;
+  --color-neutral-200: #EAE7E7;
+  --color-neutral-300: #D7D3D3;
+  --color-neutral-400: #BAB6B6;
+  --color-neutral-500: #9B9797;
+  --color-neutral-600: #7D7979;
+  --color-neutral-700: #605D5D;
+  --color-neutral-800: #444141;
+  --color-neutral-900: #2D2B2B;
 
-  /* issue #206 follow-up — fixed, theme-invariant dark text for a solid
-     var(--color-brand-gold) FILL (buttons: .btn-primary/.btn-cta), not the
-     lighter-but-still-text-role --color-brand-gold-ink above. Gold is a
-     similar mid-lightness value in both themes (#D9A441 light / #E8B457
-     dark), so a theme-relative var(--color-text) — dark in light theme,
-     near-white in dark theme — passes in light theme but fails badly in
-     dark theme (verified 1.62:1 live via axe on .btn-cta, well under the
-     4.5:1 minimum). This literal (equal to light theme's --color-text) was
-     verified 6.8:1 against light-theme gold and 8.1:1 against dark-theme
-     gold — comfortably passing in both without a per-theme override, the
-     same "fixed color on a background that doesn't track site theme"
-     pattern already used by .brand-mark/.modal-overlay elsewhere in this
-     file. */
-  --color-ink-on-gold: #2A2420;
+  /* Semantic roles collapse into the mono scheme per design-system.md §2:
+     danger reuses the accent ramp; success/warning use neutral ink + tags,
+     not new hues. --color-warning/-bg used to have a separate darkened
+     "-ink" text variant (--color-warning-ink) under Alpenglow — that's gone
+     now: --color-warning already IS a text-safe accent-700 value, so every
+     old --color-warning-ink call site was repointed straight to
+     --color-warning instead of keeping a now-redundant alias token. */
+  --color-danger:      var(--color-accent-700);
+  --color-danger-bg:   var(--color-accent-100);
+  --color-success:     var(--color-neutral-800);
+  --color-success-bg:  var(--color-neutral-200);
+  --color-warning:     var(--color-accent-700);
+  --color-warning-bg:  var(--color-accent-100);
 
-  --font-body:    'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-display: 'Fraunces', Georgia, serif;
-  --font-mono:    'Geist Mono', 'SF Mono', Consolas, monospace;
+  /* Priority mapping — design-system.md §2: "P0 = accent tint, P1 = lighter
+     accent tint or outline, P2 = neutral tint." The v2 spec has only three
+     priority tiers (P0/P1/P2); this app's data model has a fourth (P3).
+     Judgment call: every old --color-p3/--color-p3-ink call site was
+     repointed directly to --color-p2/--color-p2-ink (the lowest/neutral
+     tier) rather than keeping a separate --color-p3 alias token — P3 is now
+     visually identical to P2, which reads correctly for "lowest priority,
+     de-emphasized" and avoids inventing a token outside the spec's exact
+     list. */
+  --color-p0:     var(--color-accent);
+  --color-p0-ink: var(--color-accent-800);
+  --color-p0-bg:  var(--color-accent-100);
+  --color-p1:     var(--color-accent-400);
+  --color-p1-ink: var(--color-accent-700);
+  --color-p1-bg:  var(--color-accent-100);
+  --color-p2:     var(--color-neutral-500);
+  --color-p2-ink: var(--color-neutral-800);
+  --color-p2-bg:  var(--color-neutral-200);
 
-  /* Type scale — --text-md (old 15px tier) had no Alpenglow equivalent;
-     every call site was migrated to --text-base (nearest new tier), flagged
-     for the user in the PR report. */
+  /* Text on solid accent fills (buttons, filled badges) — replaces
+     --color-ink-on-gold. */
+  --color-ink-on-accent: #F3F2F2;
+
+  --font-body:    "Archivo", system-ui, sans-serif;
+  --font-heading: "Archivo", system-ui, sans-serif;
+  /* --font-display is kept as an alias (not removed) so the ~8 existing
+     call sites using this name don't all need a mechanical rename in this
+     CSS-only pass — it now resolves to Archivo like everything else, closing
+     the "no separate display font" gap design-system.md §1 calls for, with
+     zero risk of missing a call site. New code should read --font-heading
+     directly. */
+  --font-display: var(--font-heading);
+  /* --font-mono — judgment call: design-system.md doesn't explicitly forbid
+     monospace for code/numeric contexts (tabular phase indices, the AI-import
+     JSON paste area, feedback report reference codes), only that heading/body
+     text must be Archivo. Dropped the old custom 'Geist Mono' webfont (no
+     additional font family beyond Archivo should be loaded per §1) in favor
+     of a system monospace stack — visually neutral, zero extra network cost,
+     and unaffected by the CSP font-src change below since it needs no
+     Google Fonts request. */
+  --font-mono:    ui-monospace, "SF Mono", Consolas, monospace;
+
+  /* Type scale (rem) — unrelated to this pass's token scope, unchanged. */
   --text-xs:   0.75rem;
   --text-sm:   0.875rem;
   --text-base: 1rem;
@@ -125,6 +126,8 @@
   --font-weight-medium:   500;
   --font-weight-semibold: 600;
   --font-weight-bold:     700;
+  /* Archivo's heaviest weight, used for headings per design-system.md §3. */
+  --font-weight-extrabold: 800;
 
   --leading-tight:  1.2;
   --leading-snug:   1.3;
@@ -135,9 +138,7 @@
   --tracking-snug: -0.01em;
   --tracking-caps: 0.07em;
 
-  /* Spacing scale — --space-5/10/20 (old 20/40/80px tiers) had no Alpenglow
-     equivalent; every call site was migrated to the next tier up
-     (--space-6/12/24), flagged for the user in the PR report. */
+  /* Spacing scale — unrelated to this pass's token scope, unchanged. */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -148,49 +149,57 @@
   --space-16: 4rem;
   --space-24: 6rem;
 
-  /* App shell topbar height (issue #6 Phase 4.2) — no Alpenglow equivalent,
-     unchanged. */
+  /* App shell topbar height — unrelated to this pass's token scope, unchanged. */
   --topbar-h: 56px;
 
-  /* Icon size scale (issue #107) — no Alpenglow equivalent, unchanged. */
+  /* Icon size scale — unrelated to this pass's token scope, unchanged. */
   --icon-size-xs: 16px;
   --icon-size-sm: 20px;
   --icon-size-md: 24px;
   --icon-size-lg: 32px;
 
-  /* Shared "metadata chip" box-model scale (issue #136 Phase 3) — no
-     Alpenglow equivalent, unchanged. */
+  /* Shared "metadata chip" box-model scale — height/padding unrelated to
+     this pass's token scope, unchanged. --chip-radius is explicitly in
+     scope: design-system.md §4/§5 calls for "no rounded... chips", zeroed
+     alongside --radius-*/--radius-full below. */
   --chip-height: 22px;
   --chip-padding-x: 9px;
-  --chip-radius: 999px;
+  --chip-radius: 0px;
 
-  /* Radius scale (issue #206 §2) — --radius-md's value is an exact-pixel
-     match for the pre-#206 --radius (10px = 0.625rem) and --radius-lg's is
-     an exact-pixel match for the pre-#206 --radius-lg (16px = 1rem), so
-     renaming --radius -> --radius-md file-wide was a zero-visual-risk
-     rename, not a value change. */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.625rem;
-  --radius-lg: 1rem;
-  --radius-full: 999px;
+  /* Radius scale — design-system.md §4: "Radius 0 everywhere... No rounded
+     buttons, cards, inputs, checkboxes, chips, avatars, or modals."
+     --radius-full is also zeroed for the same reason (pill-shaped chips/
+     avatars/toggle tracks all go square too). */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-full: 0px;
 
-  /* Shadow scale (issue #206 §2) — --shadow-xs/--shadow-xl/--shadow-brand
-     (old 5-tier scale) have no Alpenglow equivalent (spec only defines 3
-     tiers); kept under their pre-#206 names/values, flagged for the user. */
-  --shadow-xs: 0 1px 2px rgba(42, 36, 32, 0.04), 0 0 0 1px rgba(42, 36, 32, 0.02);
-  --shadow-sm: 0 1px 2px rgba(42, 36, 32, 0.06);
-  --shadow-md: 0 4px 12px rgba(42, 36, 32, 0.08);
-  --shadow-lg: 0 12px 32px rgba(42, 36, 32, 0.12);
-  --shadow-xl: 0 32px 64px rgba(42, 36, 32, 0.16), 0 12px 24px rgba(42, 36, 32, 0.08);
-  --shadow-brand: 0 8px 24px rgba(217, 164, 65, 0.24);
+  /* Shadow scale — design-system.md §4: "Elevation only for overlays
+     (dialog, dropdown, command palette, toasts) via --shadow-sm/md/lg. Flat
+     surfaces otherwise." --shadow-sm/md/lg are the spec's exact values.
+     --shadow-xs/-xl have no spec equivalent (spec only defines 3 tiers) —
+     kept defined (reduce risk of a dangling var()), derived from the same
+     neutral-ink shadow family as -sm/-md/-lg rather than left at their old
+     values. --shadow-brand had zero call sites at the time of this pass
+     (grepped and confirmed) — no colored/gold shadow is allowed on a flat
+     surface per §4/§9's checklist, so rather than delete the token outright
+     (a future accent-emphasis use might want a shadow keyed to the accent
+     color specifically, e.g. a hovering "you can drop this here" affordance)
+     it's redefined as a low-opacity accent-tinted shadow, not a neutral one
+     — documented here since it's a deliberate exception to "flat surfaces
+     otherwise," to be used only if a genuine future need arises, not
+     reintroduced as a default button/card shadow. */
+  --shadow-xs: 0 1px 2px color-mix(in srgb, var(--color-neutral-900) 8%, transparent), 0 0 0 1px color-mix(in srgb, var(--color-neutral-900) 4%, transparent);
+  --shadow-sm: 0 1px 2px  color-mix(in srgb, #2D2B2B 14%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #2D2B2B 16%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2D2B2B 22%, transparent);
+  --shadow-xl: 0 24px 48px color-mix(in srgb, var(--color-neutral-900) 20%, transparent), 0 8px 16px color-mix(in srgb, var(--color-neutral-900) 10%, transparent);
+  --shadow-brand: 0 8px 24px color-mix(in srgb, var(--color-accent) 20%, transparent);
 
-  /* Motion (issue #206 §2) — --duration-fast/base/slow renamed in place to
-     the spec's values (same names, new numbers). --duration-instant/
-     --duration-enter/--stagger-base and every --ease-* below have no
-     Alpenglow equivalent (motion *consolidation* is explicitly PR2/§5
-     scope, not this token pass) — kept unchanged; --ease-standard/
-     --ease-decelerate/--ease-accelerate are new, available for PR2 to
-     adopt. */
+  /* Motion (durations/easing) — unrelated to this pass's token scope,
+     unchanged; design-system.md §7 reuses --duration-fast/base and
+     --ease-out for the 120-200ms opacity/transform hover/press rule. */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-decelerate: cubic-bezier(0, 0, 0, 1);
   --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);
@@ -207,25 +216,22 @@
 
   --stagger-base: 40ms;
 
-  /* Numbered accent/neutral scale (issue #6 Phase 1.3) — no Alpenglow
-     equivalent, unchanged (fixed raw values, not theme-flipping;
-     --color-brand-gold/--color-warning above are the real theme-aware
-     slots components should use). The matching --brand-50/100/500/600/700
-     teal scale was removed here (not just left unused) once shareCard.js's
-     `drawBackground()` moved to --color-brand-gold-ink/--color-brand-rose-ink
-     — those five tokens had no other call site anywhere in the app. */
-  --accent-50: #fff7ed;
-  --accent-400: #fb923c;
-  --accent-500: #f97316;
+  /* Activity heatmap intensity scale — design-system.md §5: "hard-edged
+     squares, 5 steps" — the exact 5 hex stops from the spec/design-tokens.css. */
+  --heat-0: var(--color-neutral-200);
+  --heat-1: #FFC4B8;
+  --heat-2: #FF9783;
+  --heat-3: #FF563C;
+  --heat-4: #DD2B0F;
 
-  /* Activity heatmap intensity scale (issue #8) — no Alpenglow equivalent,
-     unchanged. */
-  --heat-0: var(--color-surface-raised);
-  --heat-1: #ccfbf1;
-  --heat-2: #5eead4;
-  --heat-3: #14b8a6;
-  --heat-4: #0f766e;
-
+  /* Old bare --neutral-* scale (no "color-" prefix) — a genuinely distinct,
+     pre-existing, theme-INVARIANT scale (issue #6 Phase 1.3), separate from
+     the new theme-flipping --color-neutral-* ramp above. Confirmed via grep
+     before deciding to keep it: only --neutral-900 currently has a live call
+     site (.tooltip-bubble's fixed-dark-in-both-themes background), but the
+     whole scale is kept, unchanged, per this task's own "if genuinely still
+     needed for something unrelated to the redesign, keep it" instruction —
+     out of scope for the #297 color redesign, not deleted. */
   --neutral-50: #f8fafc;
   --neutral-100: #f1f5f9;
   --neutral-200: #e2e8f0;
@@ -234,68 +240,76 @@
   --neutral-700: #334155;
   --neutral-900: #0f172a;
 
+  /* DELETED (do not reintroduce, issue #297): --color-brand-gold,
+     --color-brand-rose, --gradient-alpenglow, --color-brand-gold-ink,
+     --color-warning-ink, --color-brand-rose-ink, --color-ink-on-gold,
+     old --accent-50/400/500 (orange set), --color-p3/--color-p3-ink,
+     bg-grid-glow / text-gradient-brand classes. */
 }
 
 :root[data-theme='dark'] {
-  /* issue #206 — Alpenglow dark-theme tokens, same full-replace policy as
-     the light block above. */
-  --color-bg:             #1C1815;
-  --color-surface:        #262019;
-  --color-surface-raised: #2E271F;
-  --color-border:         #3A3129;
-  --color-border-strong:  #4A3F34;
-  --color-text:           #F2EDE6;
-  --color-text-muted:     #B8AC9C;
-  --color-text-faint:     #7D7264;
-  --color-brand-gold:     #E8B457;
-  --color-brand-rose:     #D4788A;
-  /* issue #206 §5 follow-up — same warm-olive retune as the light-theme
-     token above, see that comment for the full reasoning. */
-  --color-success:        #7E9560;
-  --color-success-bg:     #2E3324;
-  --color-warning:        #D9A05C;
-  --color-warning-bg:     #3A2F1F;
-  --color-danger:         #C97561;
-  --color-danger-bg:      #3A2721;
-  --color-p0: var(--color-danger);
-  --color-p1: var(--color-warning);
-  --color-p2: var(--color-brand-gold);
-  --color-p3: var(--color-text-faint);
+  --color-bg:             #141312;
+  --color-surface:        #1E1C1B;
+  --color-surface-raised: #252221;
+  --color-border:         color-mix(in srgb, #F1EFED 32%, transparent);
+  --color-border-strong:  #F1EFED;
+  --color-divider:        color-mix(in srgb, #F1EFED 32%, transparent);
+  --color-text:           #F1EFED;
+  --color-text-muted:     color-mix(in srgb, #F1EFED 60%, transparent);
+  --color-text-faint:     color-mix(in srgb, #F1EFED 45%, transparent);
 
-  /* issue #206 follow-up — passthrough, not darkened: dark theme's gold/
-     warning already clear 7-13:1 against these near-black surfaces (see the
-     light-theme block's comment above for the full contrast writeup). */
-  --color-brand-gold-ink: var(--color-brand-gold);
-  --color-warning-ink:    var(--color-warning);
-  --color-p0-ink: var(--color-danger);
-  --color-p1-ink: var(--color-warning-ink);
-  --color-p2-ink: var(--color-brand-gold-ink);
-  --color-p3-ink: var(--color-text-muted);
-  /* issue #206 §5 follow-up — passthrough, not darkened: dark theme's rose
-     (#D4788A) on --color-danger-bg (#3A2721) computes to ~4.6:1, already
-     clearing the 4.5:1 minimum without a color-mix() derivation. */
-  --color-brand-rose-ink: var(--color-brand-rose);
+  --color-accent:      #FF563C;
+  --color-accent-100:  #38201A;
+  --color-accent-200:  #4D170E;
+  --color-accent-300:  #7C1405;
+  --color-accent-400:  #DD2B0F;
+  --color-accent-500:  #FF563C;
+  --color-accent-600:  #FF6D55;  /* hover steps LIGHTER on dark ground */
+  --color-accent-700:  #FFC4B8;  /* accent as text */
+  --color-accent-800:  #FFC4B8;
+  --color-accent-900:  #FFE0D9;
 
-  --surface-glass: rgba(18, 18, 18, 0.88);
-  --border-glass: rgba(58, 49, 41, 0.8);
-  --glow-brand: rgba(232, 180, 87, 0.1);
-  --glow-accent: rgba(212, 120, 138, 0.05);
-  --focus: rgba(232, 180, 87, 0.28);
+  --color-neutral-100: #1E1C1B;
+  --color-neutral-200: #2B2827;
+  --color-neutral-300: #3A3634;
+  --color-neutral-400: #4A4643;
+  --color-neutral-500: #6B6663;
+  --color-neutral-600: #8C8783;
+  --color-neutral-700: #ADA8A4;
+  --color-neutral-800: #D7D3D3;
+  --color-neutral-900: #EAE7E7;
 
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(0, 0, 0, 0.12);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 32px 64px rgba(0, 0, 0, 0.6), 0 12px 24px rgba(0, 0, 0, 0.36);
-  --shadow-brand: 0 8px 24px rgba(232, 180, 87, 0.28);
+  --color-danger:      var(--color-accent-700);
+  --color-danger-bg:   var(--color-accent-100);
+  --color-success:     var(--color-neutral-800);
+  --color-success-bg:  var(--color-neutral-200);
+  --color-warning:     var(--color-accent-700);
+  --color-warning-bg:  var(--color-accent-100);
 
-  /* Activity heatmap intensity scale (issue #8), dark-theme stops — no
-     Alpenglow equivalent, unchanged. */
-  --heat-0: var(--color-surface-raised);
-  --heat-1: #123832;
-  --heat-2: #1f5148;
-  --heat-3: #2dd4bf;
-  --heat-4: #5eead4;
+  --color-p0:     var(--color-accent);
+  --color-p0-ink: var(--color-accent-800);
+  --color-p0-bg:  var(--color-accent-100);
+  --color-p1:     var(--color-accent-400);
+  --color-p1-ink: var(--color-accent-700);
+  --color-p1-bg:  var(--color-accent-100);
+  --color-p2:     var(--color-neutral-500);
+  --color-p2-ink: var(--color-neutral-800);
+  --color-p2-bg:  var(--color-neutral-200);
+
+  --color-ink-on-accent: #141312;
+
+  --heat-0: var(--color-neutral-200);
+  --heat-1: #4D170E;
+  --heat-2: #AE1800;
+  --heat-3: #FF563C;
+  --heat-4: #FF9783;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.18);
+  --shadow-sm: 0 1px 2px  rgba(0,0,0,.5);
+  --shadow-md: 0 3px 10px rgba(0,0,0,.55);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,.65);
+  --shadow-xl: 0 24px 48px rgba(0,0,0,.7), 0 8px 16px rgba(0,0,0,.4);
+  --shadow-brand: 0 8px 24px color-mix(in srgb, var(--color-accent) 24%, transparent);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -348,8 +362,8 @@ body {
   top: 12px;
 }
 .skip-link:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 4px var(--focus);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 /* Animations */
@@ -398,18 +412,18 @@ body {
   transition: opacity 0.15s ease;
 }
 a.brand:hover { opacity: 0.85; }
-a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 4px; border-radius: var(--radius-md); }
+a.brand:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; border-radius: var(--radius-md); }
 
 /* intentional: fixed solid brand gold + white text/glow, same in both themes (issue #116).
    issue #206 §7 originally moved this to var(--gradient-alpenglow); a later user
    decision in the same PR reverted every gradient app-wide back to solid color, so
-   this is a flat var(--color-brand-gold) fill again — the logo and the progress ring
+   this is a flat var(--color-accent) fill again — the logo and the progress ring
    still agree with each other, both solid now instead of both gradient. */
 .brand-mark {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: var(--color-brand-gold);
+  background: var(--color-accent);
   color: #fff;
   font-weight: 900;
   font-size: 20px;
@@ -442,15 +456,15 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   font-weight: 700;
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
 }
-.eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-brand-gold); flex-shrink: 0; }
+.eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); flex-shrink: 0; }
 /* issue #155 v2 Phase C — landing/auth/shell recolor: swap the ZeBeyond mint accent for
    the v2 lime accent on the specific classes scoped to those three areas (this class is
    only ever used by landing.js/authMarketingPanel.js — see ui-styling.md). Falls back to
    --color-brand-gold in light theme, unchanged (no v2 reference material exists there). */
-:root[data-theme='dark'] .eyebrow { color: var(--color-brand-gold-ink); }
-:root[data-theme='dark'] .eyebrow-dot { background: var(--color-brand-gold); }
+:root[data-theme='dark'] .eyebrow { color: var(--color-accent-700); }
+:root[data-theme='dark'] .eyebrow-dot { background: var(--color-accent); }
 
 /* Solid accent-color headline text, for one accent phrase inside an
    otherwise plain-color heading. Was a background-clip:text gradient;
@@ -458,7 +472,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    decision — the class name is kept as-is (matching every JS call site) even
    though it's no longer literally a gradient. */
 .text-gradient-brand {
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
 }
 
 /* Two-tone tag-chip pair (the "EPOP CONCEPT" + "AUTOMOTIVE" chip pattern) —
@@ -481,7 +495,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   border: 1px solid var(--color-border);
   color: var(--color-text-muted);
 }
-.tag-chip-accent { background: var(--color-warning-bg); border-color: var(--color-border-strong); color: var(--color-brand-gold-ink); }
+.tag-chip-accent { background: var(--color-warning-bg); border-color: var(--color-border-strong); color: var(--color-accent-700); }
 
 /* Small rounded-square icon container for card headers (the icon-topped
    case-study-card pattern) — wraps a createIcon()/createDecorativeIcon()
@@ -496,41 +510,15 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   border-radius: var(--radius-md);
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
 }
 /* issue #155 v2 Phase C — landing-scoped recolor; falls back to mint in light theme. */
-:root[data-theme='dark'] .icon-tile { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .icon-tile { color: var(--color-accent-700); }
 
-/* issue #206 §3.1 — .btn-cta is landing.js's marketing "Start for free" CTA
-   (3 call sites, all `className: 'btn-cta'`/`'btn-cta btn-lg'`). Folded into
-   a visual alias of the new .btn-primary treatment below rather than
-   deleting the class and touching landing.js — this pass is CSS-only. Kept
-   its own pill radius (--radius-full, was --chip-radius) since a marketing
-   CTA reading as a distinct shape from the app-chrome .btn-primary is still
-   a reasonable call; flagging in case the shape should be unified too. */
-.btn-cta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  height: 40px;
-  padding: 0 var(--space-6);
-  border-radius: var(--radius-full);
-  border: 1px solid transparent;
-  background: var(--color-brand-gold);
-  color: var(--color-ink-on-gold);
-  font-weight: var(--font-weight-bold);
-  font-size: var(--text-sm);
-  text-decoration: none;
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
-}
-.btn-cta:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
-.btn-cta:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 2px; }
-/* matches .btn-lg's sizing so a .btn-cta.btn-lg sits flush with an adjacent
-   .btn-secondary.btn-lg (landing hero actions row) */
-.btn-cta.btn-lg { height: 48px; padding: 0 var(--space-8); font-size: var(--text-base); }
+/* issue #297 — design-system.md §5 explicitly merges .btn-cta into
+   .btn-primary ("`.btn-cta` is merged into `.btn-primary`"). landing.js's 3
+   call sites now read className: 'btn-primary'/'btn-primary btn-lg'
+   directly — no separate CTA class/shape survives this phase. */
 
 /* Bordered pill container that visually groups adjacent icon-only buttons
    (the reference's search/mail/sign-in icon cluster) — a shared wrapper,
@@ -550,23 +538,20 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    defensive reset for any future child that doesn't. */
 .icon-btn-group > * { border: none; background: transparent; }
 
-/* Decorative diagonal-grid background layer (the reference's faint
-   grid-line texture behind hero/CTA sections) — an absolutely-positioned
-   child of any position:relative;overflow:hidden section. Diagonal lines
-   read from --color-text via color-mix() so they stay faint-but-visible in
-   both themes without a separate dark-theme override (unlike
-   .auth-marketing-bg-pattern's fixed-white version above, which is correct
-   only because that one panel is always-dark regardless of site theme).
-   issue #206 §5 follow-up removed the radial --color-brand-gold glow this
-   layer used to also carry — same "no ambient color-gradient background
-   anywhere in the app" decision as body/.auth-page-bg/.auth-marketing
-   above; the repeating-linear-gradient line pattern itself is a faint
-   6%-opacity structural texture, not a color wash, and is kept. */
+/* issue #297 — design-system.md §2 explicitly bans this class by name
+   ("No glows, no bg-grid-glow"), not just gradient color washes generally —
+   the previous repeating-linear-gradient grid-line texture (a structural,
+   not color, gradient) is removed outright rather than retuned. Kept as a
+   named no-op class (matching every existing JS call site in landing.js/
+   authMarketingPanel.js, same "keep the name, drop the effect" treatment
+   already used for .text-gradient-brand above) so this stays a CSS-only
+   pass with zero JS diffs — the wrapping section is now a plain flat
+   surface with no decorative layer at all, matching §1's "flat,
+   architectural" identity. */
 .bg-grid-glow {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--color-text) 6%, transparent) 0px, color-mix(in srgb, var(--color-text) 6%, transparent) 1px, transparent 1px, transparent 28px);
 }
 
 /* Theme toggle */
@@ -594,20 +579,18 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   transition: background-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
 }
 
-.btn:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 2px; }
+.btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 
-/* Primary — filled gold, fixed dark text in both themes. Originally used
-   var(--color-text) here (theme-relative), which passes in light theme but
-   fails badly in dark theme since --color-text flips to near-white while
-   gold stays a similar mid-lightness in both themes — caught live by axe on
-   the visually-identical .btn-cta (1.62:1) and fixed at the token level via
-   --color-ink-on-gold; see that token's comment above for the full
-   contrast writeup. */
+/* Primary — filled accent, fixed ground-colored text in both themes (see
+   --color-ink-on-accent's own comment above for the cross-theme contrast
+   writeup this token exists to solve). issue #297: also the target of the
+   .btn-cta merge above — every former .btn-cta call site (landing.js) now
+   renders through this rule directly. */
 .btn-primary {
-  background: var(--color-brand-gold);
-  color: var(--color-ink-on-gold);
-  border-color: var(--color-brand-gold);
+  background: var(--color-accent);
+  color: var(--color-ink-on-accent);
+  border-color: var(--color-accent);
   box-shadow: var(--shadow-sm);
 }
 .btn-primary:hover:not(:disabled) { box-shadow: var(--shadow-md); transform: translateY(-1px); }
@@ -619,7 +602,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   color: var(--color-text);
   border-color: var(--color-border-strong);
 }
-.btn-secondary:hover:not(:disabled) { border-color: var(--color-brand-gold); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--color-accent); }
 
 /* Ghost/tertiary — transparent until hovered. */
 .btn-ghost { background: transparent; border-color: transparent; color: var(--color-text-muted); }
@@ -657,10 +640,10 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .btn-lg { min-height: 48px; padding: 12px 24px; font-size: var(--text-base); }
 .btn-icon { width: 36px; height: 36px; padding: 0; font-size: 22px; line-height: 1; }
 
-.link { color: var(--color-brand-gold-ink); font-weight: 700; text-decoration: none; }
+.link { color: var(--color-accent-700); font-weight: 700; text-decoration: none; }
 /* issue #155 v2 Phase D3 (full completion pass) — the app's generic inline-link class;
    straight text swap. */
-:root[data-theme='dark'] .link { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .link { color: var(--color-accent-700); }
 .link:hover { text-decoration: underline; }
 
 /* Form fields */
@@ -680,8 +663,34 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 /* issue #206 §3.4 — 20% opacity via color-mix(), matching this file's
    established opacity pattern (see .bg-grid-glow above) rather than a
    separate rgba literal. */
-.field-input:focus { outline: none; border-color: var(--color-brand-gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-gold) 20%, transparent); }
+.field-input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 20%, transparent); }
 .field-input.compact { padding: var(--space-2) 10px; font-size: var(--text-sm); }
+/* issue #297 — design-system.md §5's "flat surface fill, 1px divider border,
+   accent caret, accent border on focus" input spec. .field-input (above) is
+   this app's one input base class (no separate .input exists app-wide) and
+   already satisfied every part of that spec except the caret color. */
+.field-input, .search-input, .import-paste-area { caret-color: var(--color-accent); }
+
+/* Segmented control (design-system.md §5) — for exclusive-choice groups
+   (priority filter, theme picker). Base class only this phase, same
+   "built, not yet wired into a page" precedent as .tabs (issue #125) —
+   the dashboard priority filter and theme toggle adopt this in a later
+   phase alongside their own page's markup changes. */
+.seg { display: inline-flex; border: 1px solid var(--color-border); }
+.seg-item {
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: none;
+  font: inherit;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+.seg-item + .seg-item { border-left: 1px solid var(--color-border); }
+.seg-item[aria-selected='true'], .seg-item.active { background: var(--color-accent); color: var(--color-ink-on-accent); }
+.seg-item:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 
 .form-message { min-height: 20px; font-size: var(--text-sm); font-weight: 600; color: var(--color-text-muted); }
 .form-message.error { color: var(--color-danger); }
@@ -714,9 +723,9 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   line-height: 1;
 }
 .password-toggle:hover { color: var(--color-text); }
-.password-toggle:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 2px; }
+.password-toggle:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 /* issue #155 v2 Phase D3 (full completion pass) — straight outline swap. */
-:root[data-theme='dark'] .password-toggle:focus-visible { outline-color: var(--color-brand-gold); }
+:root[data-theme='dark'] .password-toggle:focus-visible { outline-color: var(--color-accent); }
 
 /* Issue #6 Phase 5.3 — inline ✓/✕ blur validation icon, shares
    .field-input-wrap with the password-toggle button above but must not
@@ -735,10 +744,10 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   justify-content: center;
   pointer-events: none;
 }
-.field-validation-icon.valid { color: var(--color-brand-gold-ink); }
+.field-validation-icon.valid { color: var(--color-accent-700); }
 .field-validation-icon.invalid { color: var(--color-danger); }
 /* issue #155 v2 Phase D3 (full completion pass) — straight icon-color swap. */
-:root[data-theme='dark'] .field-validation-icon.valid { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .field-validation-icon.valid { color: var(--color-accent-700); }
 .field-input-wrap.has-toggle .field-validation-icon { right: 46px; }
 .field-input-wrap.has-toggle .field-input { padding-right: 84px; }
 
@@ -751,19 +760,19 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 
 .field-label-row { display: flex; justify-content: space-between; align-items: center; }
 .forgot-link { background: none; border: none; padding: 0; font-size: 12px; font-weight: 600; color: var(--color-text-muted); cursor: pointer; line-height: 1; }
-.forgot-link:hover { color: var(--color-brand-gold-ink); text-decoration: underline; }
-.forgot-link:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 2px; border-radius: 2px; }
+.forgot-link:hover { color: var(--color-accent-700); text-decoration: underline; }
+.forgot-link:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 2px; }
 .forgot-link:disabled { opacity: 0.5; cursor: not-allowed; }
 /* issue #155 v2 Phase D3 (full completion pass) — straight text/outline swap. */
-:root[data-theme='dark'] .forgot-link:hover { color: var(--color-brand-gold-ink); }
-:root[data-theme='dark'] .forgot-link:focus-visible { outline-color: var(--color-brand-gold); }
+:root[data-theme='dark'] .forgot-link:hover { color: var(--color-accent-700); }
+:root[data-theme='dark'] .forgot-link:focus-visible { outline-color: var(--color-accent); }
 
 .reset-success-msg { display: flex; gap: 10px; align-items: flex-start; font-size: var(--text-base); color: var(--color-text); line-height: 1.5; }
 /* intentional: fixed white checkmark on a --color-brand-gold-colored badge, same in both themes (issue #116) */
-.reset-success-icon { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--color-brand-gold); color: var(--color-ink-on-gold); font-size: 13px; font-weight: 900; }
+.reset-success-icon { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--color-accent); color: var(--color-ink-on-accent); font-size: 13px; font-weight: 900; }
 /* issue #155 v2 Phase D3 (full completion pass) — same "white text fails on lime"
    pattern as .import-step-badge: swaps both fill and text color, not just the fill. */
-:root[data-theme='dark'] .reset-success-icon { background: var(--color-brand-gold); }
+:root[data-theme='dark'] .reset-success-icon { background: var(--color-accent); }
 
 /* Auth pages — issue #6 Phase 5.1: .auth-page is a two-column split
    (marketing panel + form) above the ≤1024px breakpoint tier, single-column
@@ -843,15 +852,15 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   position: relative;
   overflow: hidden;
 }
-/* intentional: fixed gold color on this panel's own fixed-dark background
+/* intentional: fixed accent color on this panel's own fixed-dark background
    regardless of site theme (issue #116) — mirrors .eyebrow's layout (imported via the
-   shared class) but can't read the theme-flipping --color-brand-gold token here, same
-   reasoning as every other fixed color on this panel. issue #206 — retuned from the
-   old lime #f0f941 to the dark-theme Alpenglow gold value (#E8B457, matching
-   :root[data-theme='dark']'s --color-brand-gold): since this panel is always-dark
+   shared class) but can't read the theme-flipping --color-accent token here, same
+   reasoning as every other fixed color on this panel. issue #297 — retuned to the
+   dark-theme Modernist accent value (#FF563C, matching
+   :root[data-theme='dark']'s --color-accent): since this panel is always-dark
    regardless of site theme, it always uses the dark-theme accent value directly. */
-.auth-marketing-eyebrow { color: #E8B457; margin: 0 0 var(--space-4); }
-.auth-marketing-eyebrow .eyebrow-dot { background: #E8B457; }
+.auth-marketing-eyebrow { color: #FF563C; margin: 0 0 var(--space-4); }
+.auth-marketing-eyebrow .eyebrow-dot { background: #FF563C; }
 /* intentional: subtle repeating diagonal-line texture — fills the panel's empty space
    with a low-opacity design element instead of a flat void, fixed white regardless of
    site theme since .auth-marketing itself is always-dark (issue #116).
@@ -968,10 +977,10 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .auth-card-foot { padding: 0 28px 24px; font-size: var(--text-base); color: var(--color-text-muted); text-align: center; }
 .auth-form { display: grid; gap: 14px; }
 .remember-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.remember-checkbox { width: 15px; height: 15px; accent-color: var(--color-brand-gold); cursor: pointer; flex-shrink: 0; }
+.remember-checkbox { width: 15px; height: 15px; accent-color: var(--color-accent); cursor: pointer; flex-shrink: 0; }
 /* issue #155 v2 Phase D3 (full completion pass) — native checkbox accent-color, no
    text-contrast implication. */
-:root[data-theme='dark'] .remember-checkbox { accent-color: var(--color-brand-gold); }
+:root[data-theme='dark'] .remember-checkbox { accent-color: var(--color-accent); }
 .remember-label { font-size: var(--text-sm); color: var(--color-text-muted); font-weight: 600; user-select: none; }
 .auth-divider {
   display: grid;
@@ -1060,10 +1069,10 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   border-radius: var(--radius-lg);
   font-size: var(--text-sm);
   font-weight: 700;
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
 }
 /* issue #155 v2 Phase D3 (full completion pass) — plain text on a glass overlay. */
-:root[data-theme='dark'] .template-card-picking-overlay { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .template-card-picking-overlay { color: var(--color-accent-700); }
 .template-card.picking .template-card-picking-overlay { display: flex; }
 .template-card-picking-overlay .btn-spinner { width: 16px; height: 16px; border-width: 2px; }
 /* issue #6 Phase 9 — the "pick this template" action is now a real <button>
@@ -1092,14 +1101,14 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   text-align: inherit;
   cursor: pointer;
 }
-.template-card-pick:focus-visible { outline: none; box-shadow: inset 0 0 0 3px var(--focus); border-radius: var(--radius-lg); }
+.template-card-pick:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 /* issue #206 §3.2 — 3px TOP border only; right/bottom/left stay the card's
    normal 1px solid --color-border, untouched by this rule (border-top only
    sets the top edge). Was a border-image gradient; reverted to a plain solid
    color per the app-wide "no gradients, solid only" decision — simpler now
    that there's no gradient to scope to one edge via border-image-slice. */
 .template-card-current {
-  border-top: 3px solid var(--color-brand-gold);
+  border-top: 3px solid var(--color-accent);
 }
 .template-card-icon { display: inline-flex; font-size: var(--icon-size-lg); line-height: 1; }
 .template-card-name { font-size: var(--text-lg); font-weight: 800; }
@@ -1108,12 +1117,12 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .template-card-count {
   font-size: 12px;
   font-weight: 700;
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 /* issue #155 v2 Phase D3 (full completion pass) — plain text, straight swap. */
-:root[data-theme='dark'] .template-card-count { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .template-card-count { color: var(--color-accent-700); }
 /* issue #206 §3.6 — "Current" gets a small solid-filled dot (::before) next
    to the label, no markup change needed (onboarding.js renders this as a
    single `el('span', { text: 'Current' })` with no child node). Was a
@@ -1130,7 +1139,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   background: var(--color-warning-bg);
   border: 1px solid var(--color-border-strong);
 }
@@ -1139,7 +1148,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--color-brand-gold);
+  background: var(--color-accent);
   flex-shrink: 0;
 }
 .template-card-started-badge {
@@ -1183,9 +1192,9 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   line-height: 1;
   cursor: pointer;
 }
-.template-card-info-corner:hover { color: var(--color-brand-gold-ink); border-color: var(--color-border-strong); }
+.template-card-info-corner:hover { color: var(--color-accent-700); border-color: var(--color-border-strong); }
 /* issue #155 v2 Phase D3 (full completion pass) — straight text/border swap. */
-:root[data-theme='dark'] .template-card-info-corner:hover { color: var(--color-brand-gold-ink); border-color: var(--color-border-strong); }
+:root[data-theme='dark'] .template-card-info-corner:hover { color: var(--color-accent-700); border-color: var(--color-border-strong); }
 
 /* Card-action overflow menu (issue #206 §4.1) — collapses the favorite +
    hide/delete corner buttons (formerly `.template-card-favorite`/`-hide`/
@@ -1217,10 +1226,10 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   cursor: pointer;
 }
 .template-card-overflow-btn:hover,
-.template-card-overflow-btn[aria-expanded='true'] { color: var(--color-brand-gold-ink); border-color: var(--color-border-strong); }
+.template-card-overflow-btn[aria-expanded='true'] { color: var(--color-accent-700); border-color: var(--color-border-strong); }
 /* issue #155 v2 Phase D3 (full completion pass) — straight text/border swap, same as .template-card-info-corner:hover above. */
 :root[data-theme='dark'] .template-card-overflow-btn:hover,
-:root[data-theme='dark'] .template-card-overflow-btn[aria-expanded='true'] { color: var(--color-brand-gold-ink); border-color: var(--color-border-strong); }
+:root[data-theme='dark'] .template-card-overflow-btn[aria-expanded='true'] { color: var(--color-accent-700); border-color: var(--color-border-strong); }
 
 .hidden-templates-section { display: grid; gap: 12px; justify-items: center; }
 .hidden-templates-toggle { justify-self: center; }
@@ -1242,23 +1251,34 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    .template-card `--color-surface` base every other card uses (never
    overriding `background` to a solid fill) so it reads as a highlighted
    variant of the existing card language, not a mismatched flat block. */
-/* issue #136 Phase 1 — recolored from --color-brand-gold to --color-brand-rose (violet): this
-   card's whole point is "AI-generates a roadmap for you," which is a
-   different kind of meaning than --color-brand-gold teal's "this is selected/current"
-   (still used by .template-card-current two cards over) — the two used to
-   share the identical hue with nothing else distinguishing them. */
+/* issue #297 — --color-brand-rose (violet "AI-assisted" hue) is deleted, not
+   remapped to a second accent: design-system.md §1/§2 is explicit that this
+   app has "one accent per theme," with no reserved second hue for AI-related
+   affordances the way issue #136's "accent-2" concept had. Judgment call:
+   this card/badge now reads on the neutral ramp instead — --color-neutral-700
+   for the border/icon/name (a clearly darker-than-divider tone that still
+   reads as a deliberate outline, not the plain --color-border every other
+   card uses) and --color-neutral-800 for the badge's higher-contrast text
+   role (--color-brand-rose-ink's old job). The card is still visually
+   distinguished from `.template-card-current` (accent-colored) by simply
+   not using the accent at all — "the AI card is the one that's NOT accent,
+   everything else uses the scarce accent" reads as a valid distinction on
+   its own, and doesn't need a second hue to do it. The old violet glow
+   box-shadow (a decorative colored shadow) is also dropped outright — no
+   glows on flat surfaces, per design-system.md §2/§4/§9's review checklist —
+   in favor of the same plain --shadow-sm/--shadow-lg elevation every other
+   card in this file already uses. */
 .template-card-create {
   align-items: center;
   justify-content: center;
   text-align: center;
   gap: 6px;
-  border: 1.5px solid var(--color-brand-rose);
-  /* intentional: fixed violet glow tuned to --color-brand-rose, not a --shadow-* token — same treatment --shadow-brand gives --color-brand-gold, kept as its own literal since it's accent-2-specific (issue #136) */
-  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.24);
+  border: 1.5px solid var(--color-neutral-700);
+  box-shadow: var(--shadow-sm);
 }
-.template-card-create:hover, .template-card-create:has(.template-card-pick:focus-visible) { box-shadow: var(--shadow-lg), 0 8px 24px rgba(124, 58, 237, 0.24); }
-.template-card-create .template-card-icon { color: var(--color-brand-rose); }
-.template-card-create .template-card-name { color: var(--color-brand-rose); }
+.template-card-create:hover, .template-card-create:has(.template-card-pick:focus-visible) { box-shadow: var(--shadow-lg); }
+.template-card-create .template-card-icon { color: var(--color-neutral-700); }
+.template-card-create .template-card-name { color: var(--color-neutral-700); }
 .template-card-ai-badge {
   align-self: center;
   display: inline-flex;
@@ -1270,8 +1290,8 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-brand-rose-ink);
-  background: var(--color-danger-bg);
+  color: var(--color-neutral-800);
+  background: var(--color-neutral-200);
   border: 1px solid var(--color-border-strong);
 }
 
@@ -1348,9 +1368,9 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    pill treatment. */
 .nav-item.active {
   background: var(--color-surface-raised);
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   border-radius: var(--radius-md);
-  box-shadow: inset 3px 0 0 var(--color-brand-gold);
+  box-shadow: inset 3px 0 0 var(--color-accent);
 }
 .nav-item-icon { display: inline-flex; flex-shrink: 0; }
 
@@ -1407,7 +1427,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .app-sidebar-guest-risk {
   display: inline-flex;
   flex-shrink: 0;
-  color: var(--color-warning-ink);
+  color: var(--color-warning);
 }
 
 /* Collapsed — manual desktop icon-rail toggle, persisted to localStorage
@@ -1469,7 +1489,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--color-brand-gold);
+  background: var(--color-accent);
   color: #fff;
   font-weight: 800;
   flex-shrink: 0;
@@ -1477,7 +1497,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 /* issue #155 v2 Phase D3 (full completion pass) — the reference explicitly calls out
    "avatar-ring accents" as one of its lime use cases. Same white-text-fails-on-lime
    swap as .import-step-badge/.reset-success-icon — both fill and text change. */
-:root[data-theme='dark'] .avatar { background: var(--color-brand-gold); }
+:root[data-theme='dark'] .avatar { background: var(--color-accent); }
 .avatar-sm { width: 28px; height: 28px; font-size: var(--text-xs); }
 .avatar-md { width: 36px; height: 36px; font-size: var(--text-sm); }
 .avatar-lg { width: 56px; height: 56px; font-size: var(--text-lg); }
@@ -1589,7 +1609,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   color: var(--color-text);
   font: inherit;
 }
-.custom-select-trigger:focus-visible { outline: none; border-color: var(--color-brand-gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-gold) 20%, transparent); }
+.custom-select-trigger:focus-visible { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 20%, transparent); }
 .custom-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .custom-select-caret { display: inline-flex; flex-shrink: 0; color: var(--color-text-muted); transform: rotate(90deg); transition: transform var(--duration-base) var(--ease-in-out); }
 .custom-select.open .custom-select-caret { transform: rotate(-90deg); }
@@ -1632,9 +1652,9 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   cursor: pointer;
 }
 .custom-select-option:hover, .custom-select-option:focus-visible { background: var(--color-surface-raised); outline: none; }
-.custom-select-option.active { color: var(--color-brand-gold-ink); font-weight: 700; background: var(--color-warning-bg); }
+.custom-select-option.active { color: var(--color-accent-700); font-weight: 700; background: var(--color-warning-bg); }
 /* issue #155 v2 Phase D3 (full completion pass) — text-on-light-fill pattern. */
-:root[data-theme='dark'] .custom-select-option.active { color: var(--color-brand-gold-ink); background: var(--color-warning-bg); }
+:root[data-theme='dark'] .custom-select-option.active { color: var(--color-accent-700); background: var(--color-warning-bg); }
 /* Issue #36 — no focusable field renders under 16px on touch, but a listbox
    option isn't a text-zoom-triggering field; matches .field-input's own
    compact variant instead so density stays consistent with the rest of a
@@ -1831,7 +1851,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   padding: 10px 16px;
   background: var(--color-warning-bg);
   border-bottom: 1px solid var(--color-warning);
-  color: var(--color-warning-ink);
+  color: var(--color-warning);
   font-size: var(--text-sm);
   font-weight: 600;
   text-align: center;
@@ -1847,7 +1867,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   padding: 10px 16px;
   background: var(--color-warning-bg);
   border-bottom: 1px solid var(--color-border-strong);
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   font-size: var(--text-sm);
   font-weight: 600;
 }
@@ -1856,7 +1876,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 :root[data-theme='dark'] .verification-banner {
   background: var(--color-warning-bg);
   border-bottom-color: var(--color-border-strong);
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
 }
 .verification-msg { flex: 1; min-width: 0; }
 .verification-dismiss { font-size: 16px; line-height: 1; padding: 2px 8px; }
@@ -1869,7 +1889,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   padding: 10px 16px;
   background: var(--color-warning-bg);
   border-bottom: 1px solid var(--color-border-strong);
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   font-size: var(--text-sm);
   font-weight: 600;
 }
@@ -1878,7 +1898,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 :root[data-theme='dark'] .backup-reminder-banner {
   background: var(--color-warning-bg);
   border-bottom-color: var(--color-border-strong);
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
 }
 .backup-reminder-icon { font-size: var(--text-base); }
 .backup-reminder-msg { flex: 1; min-width: 220px; font-weight: 500; }
@@ -1990,15 +2010,15 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   border-radius: var(--radius-md);
   background: var(--color-surface-raised);
 }
-.shared-item-status { width: 18px; text-align: center; color: var(--color-brand-gold-ink); font-weight: 700; }
+.shared-item-status { width: 18px; text-align: center; color: var(--color-accent-700); font-weight: 700; }
 /* issue #155 v2 Phase D3 (full completion pass) — sharedRoadmapView.js's public
    read-only page; straight text swaps. */
-:root[data-theme='dark'] .shared-item-status { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .shared-item-status { color: var(--color-accent-700); }
 .shared-item-title { flex: 1; min-width: 0; }
 .shared-item-done .shared-item-title { color: var(--color-text-muted); text-decoration: line-through; }
 .shared-item-resources { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
-.shared-resource-link { color: var(--color-brand-gold-ink); font-size: var(--text-sm); }
-:root[data-theme='dark'] .shared-resource-link { color: var(--color-brand-gold-ink); }
+.shared-resource-link { color: var(--color-accent-700); font-size: var(--text-sm); }
+:root[data-theme='dark'] .shared-resource-link { color: var(--color-accent-700); }
 .shared-view-footer { margin-top: 32px; text-align: center; }
 .shared-view-attribution { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text-muted); font-size: var(--text-sm); }
 
@@ -2037,7 +2057,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--color-brand-gold);
+  background: var(--color-accent);
   color: #fff;
   font-size: 12px;
   font-weight: 800;
@@ -2048,7 +2068,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    hosts near-black text, never white), so dark theme reads `var(--color-bg)` here instead
    of the fixed white the light-theme/pre-v2 rule above uses. Falls back to the
    original brand+white pairing in light theme. */
-:root[data-theme='dark'] .import-step-badge { background: var(--color-brand-gold); }
+:root[data-theme='dark'] .import-step-badge { background: var(--color-accent); }
 .field-hint { font-size: 12px; color: var(--color-text-muted); margin-top: -4px; }
 .import-options { display: grid; gap: 14px; padding: 14px; background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
 .import-option-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -2143,12 +2163,15 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   background: var(--color-success-bg);
   color: var(--color-success);
 }
-.sync-pill.guest { background: var(--color-warning-bg); color: var(--color-warning-ink); border-color: var(--color-warning); }
+.sync-pill.guest { background: var(--color-warning-bg); color: var(--color-warning); border-color: var(--color-warning); }
 .sync-pill.error { background: var(--color-danger-bg); color: var(--color-danger); border-color: var(--color-danger); }
 
-/* intentional: fixed "synced OK" green status dot, same in both themes (issue #116) */
+/* issue #297 — design-system.md §2 collapses success into the neutral-ink
+   scheme (no dedicated green/olive hue survives this pass); --color-success
+   already resolves to --color-neutral-800 in both themes, so this dot no
+   longer needs its own fixed literal to stay theme-consistent. */
 .sync-dot {
-  width: 8px; height: 8px; border-radius: 50%; background: #65a30d; display: inline-block;
+  width: 8px; height: 8px; border-radius: 50%; background: var(--color-success); display: inline-block;
 }
 .sync-dot.error { background: var(--color-danger); }
 
@@ -2178,8 +2201,8 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   transition: transform 0.15s ease;
 }
 .daily-todo-nav-badge:hover, .daily-todo-nav-badge:focus-visible { transform: translateY(-1px); }
-.daily-todo-nav-badge:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
-.daily-todo-nav-badge.warn { background: var(--color-warning-bg); color: var(--color-warning-ink); border-color: var(--color-warning); }
+.daily-todo-nav-badge:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.daily-todo-nav-badge.warn { background: var(--color-warning-bg); color: var(--color-warning); border-color: var(--color-warning); }
 .daily-todo-nav-badge.danger { background: var(--color-danger-bg); color: var(--color-danger); border-color: var(--color-danger); }
 .daily-todo-nav-icon { display: inline-flex; flex-shrink: 0; }
 
@@ -2201,11 +2224,11 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   cursor: pointer;
   border: 1px solid var(--color-warning);
   background: var(--color-warning-bg);
-  color: var(--color-warning-ink);
+  color: var(--color-warning);
   transition: transform 0.15s ease;
 }
 .review-due-nav-badge:hover, .review-due-nav-badge:focus-visible { transform: translateY(-1px); }
-.review-due-nav-badge:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+.review-due-nav-badge:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .review-due-nav-icon { display: inline-flex; flex-shrink: 0; }
 
 /* Roadmap header (issue #6 Phase 4.4) — identity badge + freshness meta row.
@@ -2227,7 +2250,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   background: var(--color-warning-bg);
   border: 1px solid var(--color-border-strong);
   border-radius: 999px;
@@ -2237,7 +2260,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 /* issue #155 v2 Phase D3 (full completion pass) — dashboard.js's header badge;
    text-on-light-fill pattern. */
 :root[data-theme='dark'] .current-roadmap-badge {
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   background: var(--color-warning-bg);
   border-color: var(--color-border-strong);
 }
@@ -2288,17 +2311,17 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   height: 40px;
   border-radius: 999px;
   background: var(--color-warning-bg);
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   flex-shrink: 0;
 }
 /* issue #155 v2 Phase D3 (full completion pass) — dashboard.js's own stat-strip
    (distinct component from progress.js's .kpi-tile, Phase D1); text-on-light-fill
    pattern. */
-:root[data-theme='dark'] .stat-tile-icon { background: var(--color-warning-bg); color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .stat-tile-icon { background: var(--color-warning-bg); color: var(--color-accent-700); }
 
 .stat-tile-value { display: flex; align-items: baseline; gap: 4px; }
-.stat-tile-number { font-size: var(--text-3xl); font-weight: 900; color: var(--color-brand-gold-ink); font-variant-numeric: tabular-nums; }
-:root[data-theme='dark'] .stat-tile-number { color: var(--color-brand-gold-ink); }
+.stat-tile-number { font-size: var(--text-3xl); font-weight: 900; color: var(--color-accent-700); font-variant-numeric: tabular-nums; }
+:root[data-theme='dark'] .stat-tile-number { color: var(--color-accent-700); }
 .stat-tile-total { font-size: var(--text-base); color: var(--color-text-muted); font-weight: 700; font-variant-numeric: tabular-nums; }
 .stat-tile-label { display: block; font-size: var(--text-sm); color: var(--color-text-muted); font-weight: 600; }
 
@@ -2324,9 +2347,9 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   justify-content: center;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
 }
-:root[data-theme='dark'] .stat-tile-ring-value { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .stat-tile-ring-value { color: var(--color-accent-700); }
 /* percentStat (dashboard.js) reuses the shared .stat-tile-number class (32px,
    sized for the big "Items done" tile) — scope it down inside the 64px ring
    so it doesn't overflow/wrap. */
@@ -2381,13 +2404,14 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .kpi-tile-bar { margin-top: 2px; }
 
 /* The reference's "exactly one hero-highlighted tile per screen" pattern (issue #155 v2
-   redefinition comment) — a single solid-filled tile among otherwise-dark siblings.
-   Falls back to --color-brand-gold (teal) when --color-brand-gold is undefined, i.e. light theme, which
-   has no v2 reference material of its own — see ui-styling.md's "Visual design language
-   v2" section for why the lime family is dark-theme-only. */
+   redefinition comment) — a single solid-filled tile among otherwise-dark siblings. The
+   old fallback pattern (var(--color-brand-gold, var(--color-brand-gold))) was already
+   dead code by the time #297 touched this file — both arguments resolved identically,
+   a leftover from the lime/gold token collapse during #206 — so it's simplified to a
+   single --color-accent read rather than carrying the redundant fallback forward. */
 .kpi-tile-hero {
-  background: var(--color-brand-gold, var(--color-brand-gold));
-  border-color: var(--color-brand-gold, var(--color-brand-gold));
+  background: var(--color-accent);
+  border-color: var(--color-accent);
 }
 .kpi-tile-hero .kpi-tile-label,
 .kpi-tile-hero .kpi-tile-number,
@@ -2466,14 +2490,14 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   transition: transform var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
 }
 .filter-chip:hover { transform: translateY(-1px); border-color: var(--color-border-strong); }
-.filter-chip:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 2px; }
+.filter-chip:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .filter-chip.active { background: var(--color-text); border-color: var(--color-text); color: var(--color-bg); }
 /* issue #206 §3.6 — same tinted-pill treatment as .badge.P0-P3 above, so the
    two priority-indicator patterns in the app read as one consistent system. */
 .filter-chip[data-p="P0"].active { background: color-mix(in srgb, var(--color-p0) 15%, transparent); border-color: var(--color-p0); color: var(--color-p0-ink); }
 .filter-chip[data-p="P1"].active { background: color-mix(in srgb, var(--color-p1) 15%, transparent); border-color: var(--color-p1); color: var(--color-p1-ink); }
 .filter-chip[data-p="P2"].active { background: color-mix(in srgb, var(--color-p2) 15%, transparent); border-color: var(--color-p2); color: var(--color-p2-ink); }
-.filter-chip[data-p="P3"].active { background: color-mix(in srgb, var(--color-p3) 15%, transparent); border-color: var(--color-p3); color: var(--color-p3-ink); }
+.filter-chip[data-p="P3"].active { background: color-mix(in srgb, var(--color-p2) 15%, transparent); border-color: var(--color-p2); color: var(--color-p2-ink); }
 .chip-count { opacity: 0.75; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 
 /* Issue #6 Phase 4.3 — subtle hover shimmer: a diagonal highlight band swept
@@ -2553,9 +2577,10 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 /* Issue #6 Phase 4.3 — grows toward (not literally to) full toolbar width on
    focus: .toolbar-right also holds the Expand/Collapse-all button, so an
    unbounded 100% growth would shove that button out of the row. */
-.search-input:focus { outline: none; border-color: var(--color-brand-gold); box-shadow: 0 0 0 4px var(--focus); width: min(520px, 100%); }
+.search-input:focus { outline: none; border-color: var(--color-accent); width: min(520px, 100%); }
+.search-input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 /* issue #155 v2 Phase D3 (full completion pass) — dashboard.js's search field. */
-:root[data-theme='dark'] .search-input:focus { border-color: var(--color-brand-gold); }
+:root[data-theme='dark'] .search-input:focus { border-color: var(--color-accent); }
 
 /* Daily Todos (issue #56) — a self-contained card, separate from the phase
    list, sourced from its own store (dailyTodoStore.js), not roadmapStore.
@@ -2593,7 +2618,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   gap: 8px;
   margin: 0 0 10px;
 }
-.daily-todo-icon { display: inline-flex; flex-shrink: 0; color: var(--color-warning-ink); }
+.daily-todo-icon { display: inline-flex; flex-shrink: 0; color: var(--color-warning); }
 .daily-todo-heading {
   margin: 0 auto 0 0;
   font-size: var(--text-base);
@@ -2629,8 +2654,8 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   padding: 0;
   flex-shrink: 0;
 }
-.daily-todo-info-btn:hover { color: var(--color-warning-ink); border-color: var(--color-warning); }
-.daily-todo-info-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+.daily-todo-info-btn:hover { color: var(--color-warning); border-color: var(--color-warning); }
+.daily-todo-info-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 /* Local reminder opt-in toggle (issue #132) — same 24x24/'sm'-icon box as
    .daily-todo-info-btn/.daily-todo-collapse-btn above (see the "Two same-row
@@ -2650,9 +2675,9 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   padding: 0;
   flex-shrink: 0;
 }
-.daily-todo-reminder-btn:hover { color: var(--color-warning-ink); border-color: var(--color-warning); }
-.daily-todo-reminder-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
-.daily-todo-reminder-btn.active { color: var(--color-warning-ink); border-color: var(--color-warning); }
+.daily-todo-reminder-btn:hover { color: var(--color-warning); border-color: var(--color-warning); }
+.daily-todo-reminder-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.daily-todo-reminder-btn.active { color: var(--color-warning); border-color: var(--color-warning); }
 
 /* Collapse/expand toggle (issue #83) — reuses the exact same chevron-rotate
    language as .phase-card/.chevron (dashboard.js's phase cards) so the two
@@ -2675,8 +2700,8 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   padding: 0;
   flex-shrink: 0;
 }
-.daily-todo-collapse-btn:hover { color: var(--color-warning-ink); border-color: var(--color-warning); }
-.daily-todo-collapse-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+.daily-todo-collapse-btn:hover { color: var(--color-warning); border-color: var(--color-warning); }
+.daily-todo-collapse-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .daily-todo-panel:not(.collapsed) .daily-todo-collapse-btn .chevron { transform: rotate(90deg); }
 
 /* Only shown while collapsed (below) — a small "N active" reminder so
@@ -2768,7 +2793,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   flex-shrink: 0;
   font-size: 10px;
   font-weight: 700;
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   background: var(--color-warning-bg);
   border-radius: 999px;
   padding: 2px 8px;
@@ -2776,7 +2801,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 }
 /* issue #155 v2 Phase D3 (full completion pass) — dailyTodoPanel.js; text-on-light-fill
    pattern. */
-:root[data-theme='dark'] .daily-todo-linked-badge { color: var(--color-brand-gold-ink); background: var(--color-warning-bg); }
+:root[data-theme='dark'] .daily-todo-linked-badge { color: var(--color-accent-700); background: var(--color-warning-bg); }
 
 /* Fixed width + right-aligned, always rendered (see renderRow in
    dailyTodoPanel.js) — every row's status text now lines up flush against
@@ -2792,8 +2817,8 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.daily-todo-remaining.ok { color: var(--color-brand-gold-ink); }
-:root[data-theme='dark'] .daily-todo-remaining.ok { color: var(--color-brand-gold-ink); }
+.daily-todo-remaining.ok { color: var(--color-accent-700); }
+:root[data-theme='dark'] .daily-todo-remaining.ok { color: var(--color-accent-700); }
 .daily-todo-remaining.warn { color: var(--color-p1-ink); }
 .daily-todo-remaining.danger { color: var(--color-p0); }
 .daily-todo-remaining.done { color: var(--color-text-muted); font-weight: 700; }
@@ -2813,7 +2838,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   padding: 0;
 }
 .daily-todo-delete:hover { color: var(--color-danger); background: var(--color-danger-bg); }
-.daily-todo-delete:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+.daily-todo-delete:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 .daily-todo-missed-toggle {
   display: block;
@@ -2871,7 +2896,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .phase-card[data-priority="P0"] { border-left-color: var(--color-p0); }
 .phase-card[data-priority="P1"] { border-left-color: var(--color-p1); }
 .phase-card[data-priority="P2"] { border-left-color: var(--color-p2); }
-.phase-card[data-priority="P3"] { border-left-color: var(--color-p3); }
+.phase-card[data-priority="P3"] { border-left-color: var(--color-p2); }
 
 .phase-head {
   width: 100%;
@@ -2888,7 +2913,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   transition: background 140ms ease;
 }
 .phase-head:hover { background: var(--color-surface-raised); }
-.phase-head:focus-visible { outline: none; box-shadow: inset 0 0 0 3px var(--focus); }
+.phase-head:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 .phase-index { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--color-text-muted); min-width: 28px; font-variant-numeric: tabular-nums; }
 /* issue #6 Phase 4.2 — display font for the "cleaner head layout" polish. */
@@ -2984,7 +3009,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .badge.P0 { background: color-mix(in srgb, var(--color-p0) 15%, transparent); color: var(--color-p0-ink); }
 .badge.P1 { background: color-mix(in srgb, var(--color-p1) 15%, transparent); color: var(--color-p1-ink); }
 .badge.P2 { background: color-mix(in srgb, var(--color-p2) 15%, transparent); color: var(--color-p2-ink); }
-.badge.P3 { background: color-mix(in srgb, var(--color-p3) 15%, transparent); color: var(--color-p3-ink); }
+.badge.P3 { background: color-mix(in srgb, var(--color-p2) 15%, transparent); color: var(--color-p2-ink); }
 
 /* Checklist items */
 .check-item {
@@ -2998,7 +3023,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 }
 .check-item:last-of-type { border-bottom: none; }
 .check-item:hover { background: var(--color-surface-raised); }
-.check-item:focus-visible { outline: none; box-shadow: inset 0 0 0 3px var(--focus); }
+.check-item:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 /* Issue #6 Phase 4.2 — stagger-in entrance for a newly-added topic row (see
    dashboard.js's knownItemIds id-diff). A capped set of discrete
@@ -3043,8 +3068,14 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 /* Phase/roadmap completion confetti flourish (issue #181, confetti.js's
    triggerConfetti()) — fixed full-viewport overlay, pointer-events: none so
    it never blocks the underlying UI, self-removed by confetti.js after the
-   animation ends. Colors reuse existing tokens rather than introducing new
-   literals, so no /* intentional */ hex comment is needed here. */
+   animation ends. issue #297 — design-system.md §7 calls for "squares in
+   the accent ramp colors (no circles, no gold)": border-radius zeroed
+   (was 2px, a holdover from the old rounded-corner scale) and every piece
+   now reads directly from the --color-accent-* ramp (was a mix of
+   --color-accent/--color-warning/--color-brand-rose — the last of those a
+   dangling reference to a deleted v3 token that would have resolved to
+   nothing) so the 6-piece burst reads as one accent family at different
+   steps, not an arbitrary color grab-bag. */
 .confetti-burst {
   position: fixed;
   inset: 0;
@@ -3058,15 +3089,15 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   left: calc(var(--confetti-x, 50%));
   width: 8px;
   height: 14px;
-  border-radius: 2px;
+  border-radius: 0;
   animation: confetti-fall 1.4s var(--ease-out) both;
 }
-.confetti-piece-0 { background: var(--color-brand-gold); left: 8%; }
-.confetti-piece-1 { background: var(--color-warning); left: 24%; }
-.confetti-piece-2 { background: var(--color-brand-rose); left: 40%; }
-.confetti-piece-3 { background: var(--color-brand-gold); left: 56%; }
-.confetti-piece-4 { background: var(--color-brand-gold); left: 72%; }
-.confetti-piece-5 { background: var(--color-warning); left: 88%; }
+.confetti-piece-0 { background: var(--color-accent); left: 8%; }
+.confetti-piece-1 { background: var(--color-accent-600); left: 24%; }
+.confetti-piece-2 { background: var(--color-accent-700); left: 40%; }
+.confetti-piece-3 { background: var(--color-accent); left: 56%; }
+.confetti-piece-4 { background: var(--color-accent-800); left: 72%; }
+.confetti-piece-5 { background: var(--color-accent-600); left: 88%; }
 .confetti-piece-delay-0 { animation-delay: 0ms; }
 .confetti-piece-delay-1 { animation-delay: calc(var(--stagger-base) * 1); }
 .confetti-piece-delay-2 { animation-delay: calc(var(--stagger-base) * 2); }
@@ -3118,7 +3149,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    comment already documents. */
 .check-mark {
   display: inline-flex;
-  color: var(--color-ink-on-gold);
+  color: var(--color-ink-on-accent);
   transform: scale(0);
   opacity: 0;
   /* issue #6 Phase 4.2 — spring bounce on toggle; pre-existing, kept as-is
@@ -3126,7 +3157,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   transition: transform var(--duration-base) var(--ease-bounce), opacity 120ms ease;
 }
 .check-item.done .check-box {
-  background: var(--color-brand-gold);
+  background: var(--color-accent);
   border-color: transparent;
 }
 .check-item.done .check-mark { transform: scale(1); opacity: 1; }
@@ -3188,7 +3219,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .priority-tag.P0 { color: var(--color-p0-ink); opacity: 1; }
 .priority-tag.P1 { color: var(--color-p1-ink); opacity: 1; }
 .priority-tag.P2 { color: var(--color-p2-ink); opacity: 1; }
-.priority-tag.P3 { color: var(--color-p3-ink); opacity: 1; }
+.priority-tag.P3 { color: var(--color-p2-ink); opacity: 1; }
 
 /* issue #136 Phase 1 — recolored from --color-warning-bg/--color-brand-gold to a
    neutral pill: a resource count is metadata, not a status, and doesn't need
@@ -3211,7 +3242,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   transition: background-color var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
 }
 .resource-count:hover { transform: translateY(-1px); }
-.resource-count:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 2px; }
+.resource-count:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 /* Issue #100 follow-up — expanded, always-visible resource links shown on a
    checklist row when the "Resources" filter chip is active (dashboard.js's
@@ -3223,7 +3254,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .check-resources-inline { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; margin-top: 2px; }
 .resource-inline-link { text-decoration: none; cursor: pointer; transition: transform 140ms ease, border-color 140ms ease; }
 .resource-inline-link:hover { transform: translateY(-1px); }
-.resource-inline-link:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+.resource-inline-link:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 /* issue #206 §3.3 — ghost-style chip, matching .resource-count's treatment
    (transparent bg, muted text, 1px border) instead of the old borderless
@@ -3242,7 +3273,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   transition: transform var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
 }
 .notes-indicator:hover { transform: translateY(-1px); border-color: var(--color-border-strong); }
-.notes-indicator:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 2px; }
+.notes-indicator:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 /* Set when a topic was last marked done via a linked Today's Todo (issue
    #56 follow-up) — cleared the moment the topic (or the linked todo) is
@@ -3253,7 +3284,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   display: inline-flex;
   align-items: center;
   gap: 1px;
-  color: var(--color-warning-ink);
+  color: var(--color-warning);
   cursor: default;
 }
 
@@ -3360,8 +3391,8 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .changelog-item-title { font-weight: 700; font-size: var(--text-sm); }
 .changelog-item-desc { color: var(--color-text-muted); font-size: var(--text-sm); margin-top: 2px; }
 .changelog-type-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 999px; margin-top: 6px; }
-.changelog-type-dot.changelog-type-feat { background: var(--color-brand-gold); }
-:root[data-theme='dark'] .changelog-type-dot.changelog-type-feat { background: var(--color-brand-gold); }
+.changelog-type-dot.changelog-type-feat { background: var(--color-accent); }
+:root[data-theme='dark'] .changelog-type-dot.changelog-type-feat { background: var(--color-accent); }
 .changelog-type-dot.changelog-type-fix { background: var(--color-warning); }
 .changelog-type-dot.changelog-type-improvement { background: var(--color-text-muted); }
 .changelog-type-label { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-muted); }
@@ -3379,12 +3410,12 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   letter-spacing: 0.03em;
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--color-brand-gold);
+  background: var(--color-accent);
   color: #fff;
 }
 /* issue #155 v2 Phase D3 (full completion pass) — featureBadge.js; white-text-fails-on
    -lime pattern, swaps both fill and text. */
-:root[data-theme='dark'] .feature-new-badge { background: var(--color-brand-gold); }
+:root[data-theme='dark'] .feature-new-badge { background: var(--color-accent); }
 
 .notes-textarea {
   resize: vertical;
@@ -3398,19 +3429,19 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .notes-status {
   font-size: var(--text-xs);
   font-weight: 700;
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   opacity: 0;
   transition: opacity 200ms ease;
 }
-:root[data-theme='dark'] .notes-status { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .notes-status { color: var(--color-accent-700); }
 .notes-status.show { opacity: 1; }
-.notes-status.error { color: var(--color-warning-ink); }
+.notes-status.error { color: var(--color-warning); }
 
 /* Issue #180 — timer start/pause control + running total, itemPanel.js and
    dailyTodoPanel.js. */
 .timer-row { display: flex; align-items: center; gap: 8px; }
-.timer-toggle-btn.active { color: var(--color-brand-gold-ink); }
-:root[data-theme='dark'] .timer-toggle-btn.active { color: var(--color-brand-gold-ink); }
+.timer-toggle-btn.active { color: var(--color-accent-700); }
+:root[data-theme='dark'] .timer-toggle-btn.active { color: var(--color-accent-700); }
 .timer-display { font-size: var(--text-sm); font-variant-numeric: tabular-nums; color: var(--color-text-muted); }
 .daily-todo-timer-btn {
   border: none;
@@ -3422,9 +3453,9 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   align-items: center;
   font: inherit;
 }
-.daily-todo-timer-btn:hover, .daily-todo-timer-btn.active { color: var(--color-brand-gold-ink); }
+.daily-todo-timer-btn:hover, .daily-todo-timer-btn.active { color: var(--color-accent-700); }
 :root[data-theme='dark'] .daily-todo-timer-btn:hover,
-:root[data-theme='dark'] .daily-todo-timer-btn.active { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .daily-todo-timer-btn.active { color: var(--color-accent-700); }
 .daily-todo-time-spent {
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
@@ -3436,7 +3467,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    Was a gradient dot; reverted to solid per the app-wide "no gradients"
    decision. */
 .resource-list-empty { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
-.resource-list-empty-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--color-brand-gold); }
+.resource-list-empty-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--color-accent); }
 .resource-card {
   display: grid;
   gap: 8px;
@@ -3507,8 +3538,8 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   height: 48px;
   margin: 0 auto var(--space-3);
   border-radius: 50%;
-  background: var(--color-brand-gold);
-  color: var(--color-ink-on-gold);
+  background: var(--color-accent);
+  color: var(--color-ink-on-accent);
 }
 .empty-title { font-weight: 800; color: var(--color-text); margin-top: var(--space-2); }
 .empty-message { margin-top: var(--space-1); }
@@ -3593,7 +3624,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   position: fixed;
   z-index: 1101;
   border-radius: var(--radius-md);
-  border: 2px solid var(--color-brand-gold);
+  border: 2px solid var(--color-accent);
   /* The dimming layer itself — a huge-spread box-shadow fills the rest of
      the viewport, leaving this element's own box as a "cutout" over the
      highlighted target. Not clip-path'ing a separate overlay, per the
@@ -3670,8 +3701,8 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   padding: var(--space-3) var(--space-4);
   cursor: pointer;
 }
-.tab[aria-selected='true'] { color: var(--color-brand-gold-ink); border-bottom-color: var(--color-brand-gold); }
-.tab:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+.tab[aria-selected='true'] { color: var(--color-accent-700); border-bottom-color: var(--color-accent); }
+.tab:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; animation: fade-in var(--duration-base) var(--ease-out); }
 
@@ -3683,7 +3714,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    simpler now that there's no gradient def to keep out of this rule's way. */
 .progress-ring-track { stroke: var(--color-border-strong); }
 .progress-ring-fill {
-  stroke: var(--color-brand-gold);
+  stroke: var(--color-accent);
   transition: stroke-dashoffset var(--duration-enter) var(--ease-spring);
 }
 
@@ -3800,11 +3831,11 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .save-badge .spin {
   width: 12px; height: 12px; border-radius: 50%;
   border: 2px solid rgba(127,127,127,0.2);
-  border-top-color: var(--color-brand-gold);
+  border-top-color: var(--color-accent);
   animation: spin 1s linear infinite;
 }
 /* issue #155 v2 Phase D3 (full completion pass) — app-wide save-status spinner. */
-:root[data-theme='dark'] .save-badge .spin { border-top-color: var(--color-brand-gold); }
+:root[data-theme='dark'] .save-badge .spin { border-top-color: var(--color-accent); }
 
 /* Toasts */
 .toast-stack {
@@ -3847,7 +3878,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   background: var(--color-surface);
   color: var(--color-text);
   border: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-brand-gold);
+  border-left: 3px solid var(--color-accent);
   padding: 12px 18px;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
@@ -3860,7 +3891,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .toast.show { opacity: 1; transform: translateY(0); }
 .toast:not(.show) { transition-timing-function: var(--ease-accelerate); transition-duration: var(--duration-fast); }
 .toast-success { border-left-color: var(--color-success); }
-.toast-info { border-left-color: var(--color-brand-gold); }
+.toast-info { border-left-color: var(--color-accent); }
 .toast-error { border-left-color: var(--color-danger); }
 
 /* ==========================================================================
@@ -3895,9 +3926,9 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .settings-row-label-group { display: inline-flex; align-items: center; gap: var(--space-2); }
 .settings-row-value { color: var(--color-text-muted); font-size: var(--text-sm); margin-right: auto; }
 .settings-row-hint { color: var(--color-text-muted); font-size: 12px; margin: 0; }
-.settings-verified { color: var(--color-brand-gold-ink); font-weight: 700; }
+.settings-verified { color: var(--color-accent-700); font-weight: 700; }
 /* issue #155 v2 Phase D2 — settings-only class, recolored; falls back to mint in light theme. */
-:root[data-theme='dark'] .settings-verified { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .settings-verified { color: var(--color-accent-700); }
 .settings-unverified { color: var(--color-p1-ink); font-weight: 700; }
 
 .settings-select { max-width: 200px; }
@@ -3990,14 +4021,17 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .heatmap-day-labels { display: grid; grid-template-rows: repeat(7, 12px); gap: 3px; width: 26px; flex-shrink: 0; margin-top: 18px; }
 .heatmap-day-label { font-size: var(--text-xs); color: var(--color-text-muted); line-height: 12px; }
 .heatmap-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); grid-auto-columns: 12px; gap: 3px; }
-.heatmap-cell { width: 12px; height: 12px; border-radius: 2px; background: var(--heat-0); padding: 0; border: none; cursor: default; }
+/* issue #297 — design-system.md §5: "Heatmap: hard-edged squares." Both
+   border-radius values below were 2px, a holdover from the old rounded
+   scale; zeroed to match --radius-*'s "0 everywhere" rule. */
+.heatmap-cell { width: 12px; height: 12px; border-radius: 0; background: var(--heat-0); padding: 0; border: none; cursor: default; }
 .heatmap-cell[data-level="1"] { background: var(--heat-1); }
 .heatmap-cell[data-level="2"] { background: var(--heat-2); }
 .heatmap-cell[data-level="3"] { background: var(--heat-3); }
 .heatmap-cell[data-level="4"] { background: var(--heat-4); }
 .heatmap-cell[data-today="true"] { outline: 1.5px solid var(--color-text); outline-offset: -1.5px; }
 .heatmap-legend { display: flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--color-text-muted); }
-.heatmap-legend-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--heat-0); }
+.heatmap-legend-swatch { width: 10px; height: 10px; border-radius: 0; background: var(--heat-0); }
 .heatmap-legend-swatch[data-level="1"] { background: var(--heat-1); }
 .heatmap-legend-swatch[data-level="2"] { background: var(--heat-2); }
 .heatmap-legend-swatch[data-level="3"] { background: var(--heat-3); }
@@ -4067,7 +4101,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 /* issue #206 — --color-brand-gold is now defined in both themes (the
    Alpenglow token layer replaced the old dark-theme-only lime token), so the
    var() fallback this rule used to need is dead; dropped. */
-.chart-legend-dot-high { background: var(--color-brand-gold); }
+.chart-legend-dot-high { background: var(--color-accent); }
 .chart-legend-dot-medium { background: var(--color-text-faint); }
 .chart-legend-dot-low { background: var(--color-border-strong); }
 
@@ -4080,7 +4114,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    A small solid gold dot, not a full illustration. Was a gradient dot;
    reverted to solid per the app-wide "no gradients" decision. */
 .chart-empty-note { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); font-size: var(--text-sm); color: var(--color-text-muted); }
-.chart-empty-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--color-brand-gold); }
+.chart-empty-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--color-accent); }
 /* Issue #125 — a skeleton placeholder for the first Chart.js CDN load only
    (chartWrapper.js's dynamic import), shown/hidden by progress.js rather
    than CSS alone since it must disappear the instant the real chart mounts,
@@ -4114,7 +4148,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .phase-breakdown-dot[data-priority="P0"] { background: var(--color-p0); }
 .phase-breakdown-dot[data-priority="P1"] { background: var(--color-p1); }
 .phase-breakdown-dot[data-priority="P2"] { background: var(--color-p2); }
-.phase-breakdown-dot[data-priority="P3"] { background: var(--color-p3); }
+.phase-breakdown-dot[data-priority="P3"] { background: var(--color-p2); }
 .phase-breakdown-main { display: grid; gap: 4px; min-width: 0; }
 .phase-breakdown-name { font-weight: 600; font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phase-breakdown-count { font-size: var(--text-sm); color: var(--color-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -4125,10 +4159,10 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
    pattern progressRing.js already uses for its own dynamic stroke-dashoffset. */
 .mini-bar { width: 100%; height: 8px; display: block; }
 .mini-bar-track { fill: var(--color-border-strong); }
-.mini-bar-fill { fill: var(--color-brand-gold); }
+.mini-bar-fill { fill: var(--color-accent); }
 /* issue #155 v2 Phase D3 (full completion pass) — base rule, used by every mini-bar
    outside progress.js's already-recolored .kpi-tile-hero context (Phase D1). */
-:root[data-theme='dark'] .mini-bar-fill { fill: var(--color-brand-gold); }
+:root[data-theme='dark'] .mini-bar-fill { fill: var(--color-accent); }
 /* issue #155 v2 Phase D1 — progress.js's "Items complete" kpi-tile-hero: a teal fill
    on top of the tile's own solid accent background would clash/low-contrast, same
    reasoning as .card-arrow-badge's hero override above. */
@@ -4148,14 +4182,14 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 .priority-table tbody tr:last-child td { border-bottom: none; }
 .priority-cell[data-band="empty"] { color: var(--color-text-muted); }
 .priority-cell[data-band="low"] { background: var(--color-danger-bg); color: var(--color-danger); }
-.priority-cell[data-band="mid"] { background: var(--color-warning-bg); color: var(--color-warning-ink); }
+.priority-cell[data-band="mid"] { background: var(--color-warning-bg); color: var(--color-warning); }
 .priority-cell[data-band="high"] { background: var(--color-success-bg); color: var(--color-success); }
 
 /* Projected completion (B8) */
 .projection-card-body { display: grid; gap: 4px; justify-items: center; text-align: center; }
 .projection-pace { color: var(--color-text-muted); font-size: var(--text-sm); }
-.projection-headline { font-size: var(--text-2xl); font-weight: 800; color: var(--color-brand-gold-ink); }
-:root[data-theme='dark'] .projection-headline { color: var(--color-brand-gold-ink); }
+.projection-headline { font-size: var(--text-2xl); font-weight: 800; color: var(--color-accent-700); }
+:root[data-theme='dark'] .projection-headline { color: var(--color-accent-700); }
 .projection-boost { color: var(--color-text-muted); font-size: var(--text-sm); }
 .projection-empty { color: var(--color-text-muted); text-align: center; }
 
@@ -4205,7 +4239,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   padding: 0;
 }
 .landing-nav-link:hover { color: var(--color-text); }
-.landing-nav-link:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); border-radius: 4px; }
+.landing-nav-link:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .landing-nav-actions { display: flex; align-items: center; gap: var(--space-3); }
 
 /* issue #155 (ZeBeyond direction) — position:relative;overflow:hidden so the
@@ -4262,17 +4296,17 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   width: 18px;
   height: 18px;
   border-radius: 5px;
-  border: 2px solid var(--color-brand-gold);
+  border: 2px solid var(--color-accent);
   background: var(--color-warning-bg);
   flex-shrink: 0;
 }
 /* issue #155 v2 Phase D3 (full completion pass) — the landing hero's mockup preview
    should match the real dashboard checklist it's depicting, now that
    .check-item.done .check-box is lime in dark theme too. */
-:root[data-theme='dark'] .landing-mock-check { border-color: var(--color-brand-gold); background: var(--color-warning-bg); }
+:root[data-theme='dark'] .landing-mock-check { border-color: var(--color-accent); background: var(--color-warning-bg); }
 .landing-mock-bar { flex: 1; height: 10px; border-radius: 999px; background: var(--color-border-strong); overflow: hidden; }
-.landing-mock-bar-fill { display: block; height: 100%; border-radius: 999px; background: var(--color-brand-gold); }
-:root[data-theme='dark'] .landing-mock-bar-fill { background: var(--color-brand-gold); }
+.landing-mock-bar-fill { display: block; height: 100%; border-radius: 999px; background: var(--color-accent); }
+:root[data-theme='dark'] .landing-mock-bar-fill { background: var(--color-accent); }
 .landing-mock-fill-1 { width: 92%; }
 .landing-mock-fill-2 { width: 68%; }
 .landing-mock-fill-3 { width: 100%; }
@@ -4316,11 +4350,11 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   justify-content: center;
   border-radius: var(--radius-md);
   background: var(--color-warning-bg);
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   margin-bottom: var(--space-6);
 }
 /* issue #155 v2 Phase C — landing-only class, recolored; falls back to mint in light theme. */
-:root[data-theme='dark'] .feature-card-icon { background: var(--color-warning-bg); color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .feature-card-icon { background: var(--color-warning-bg); color: var(--color-accent-700); }
 .feature-card-title { font-family: var(--font-display); font-weight: 700; font-size: var(--text-lg); margin: 0 0 var(--space-2); color: var(--color-text); }
 .feature-card-text { font-size: var(--text-base); line-height: var(--leading-loose); color: var(--color-text-muted); margin: 0; }
 
@@ -4362,18 +4396,18 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   justify-content: center;
   border-radius: 50%;
   background: var(--color-warning-bg);
-  color: var(--color-brand-gold-ink);
+  color: var(--color-accent-700);
   margin-bottom: var(--space-4);
 }
 /* issue #155 v2 Phase C — landing-only class, recolored; falls back to mint in light theme. */
-:root[data-theme='dark'] .step-card-icon { background: var(--color-warning-bg); color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .step-card-icon { background: var(--color-warning-bg); color: var(--color-accent-700); }
 .step-card-title { font-family: var(--font-display); font-weight: 700; font-size: var(--text-base); margin: 0 0 var(--space-2); color: var(--color-text); }
 .step-card-text { font-size: var(--text-sm); line-height: var(--leading-loose); color: var(--color-text-muted); margin: 0; }
 
 .landing-proof { text-align: center; padding: 0 var(--space-6) var(--space-12); }
-.landing-proof-text { font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); color: var(--color-brand-gold-ink); max-width: 52ch; margin: 0 auto; }
+.landing-proof-text { font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); color: var(--color-accent-700); max-width: 52ch; margin: 0 auto; }
 /* issue #155 v2 Phase C — landing-only, recolored; falls back to mint in light theme. */
-:root[data-theme='dark'] .landing-proof-text { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .landing-proof-text { color: var(--color-accent-700); }
 
 /* issue #155 (ZeBeyond direction) — same bg-grid-glow treatment as .landing-hero above. */
 .landing-cta {
@@ -4391,7 +4425,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   border: 1px solid var(--color-border);
 }
 .landing-cta-title { font-family: var(--font-display); font-weight: 800; font-size: var(--text-3xl); letter-spacing: var(--tracking-tight); margin: 0; color: var(--color-text); position: relative; z-index: 1; }
-.landing-cta .btn-cta { position: relative; z-index: 1; }
+.landing-cta .btn-primary { position: relative; z-index: 1; }
 
 .landing-footer {
   display: flex;
@@ -4519,8 +4553,8 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
 }
 .feedback-widget-trigger.feedback-widget-visible { opacity: 1; transform: scale(1); }
 .feedback-widget-trigger:hover { box-shadow: var(--shadow-xl); border-color: var(--color-border-strong); }
-.feedback-widget-trigger:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 2px; }
-:root[data-theme='dark'] .feedback-widget-trigger:focus-visible { outline-color: var(--color-brand-gold); }
+.feedback-widget-trigger:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+:root[data-theme='dark'] .feedback-widget-trigger:focus-visible { outline-color: var(--color-accent); }
 .feedback-widget-emoji { font-size: var(--text-lg); line-height: 1; }
 
 .feedback-modal-card { max-width: 480px; width: 100%; position: relative; }
@@ -4551,13 +4585,13 @@ a.brand:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offs
   cursor: pointer;
   transition: border-color 140ms ease, transform 140ms ease;
 }
-.feedback-type-card:hover { border-color: var(--color-brand-gold); transform: translateY(-1px); }
-.feedback-type-card:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 2px; }
+.feedback-type-card:hover { border-color: var(--color-accent); transform: translateY(-1px); }
+.feedback-type-card:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 /* issue #155 v2 Phase D3 — modal-scoped recolor; border/outline colors carry no
    text-contrast requirement of their own, so a straight token swap is safe here
    (unlike .import-step-badge above). Falls back to mint in light theme. */
-:root[data-theme='dark'] .feedback-type-card:hover { border-color: var(--color-brand-gold); }
-:root[data-theme='dark'] .feedback-type-card:focus-visible { outline-color: var(--color-brand-gold); }
+:root[data-theme='dark'] .feedback-type-card:hover { border-color: var(--color-accent); }
+:root[data-theme='dark'] .feedback-type-card:focus-visible { outline-color: var(--color-accent); }
 .feedback-type-emoji { font-size: var(--text-2xl); }
 
 .feedback-form { display: flex; flex-direction: column; gap: 16px; }
@@ -4599,15 +4633,15 @@ textarea.feedback-field-input { min-height: 88px; resize: vertical; }
   cursor: pointer;
   transition: border-color var(--duration-fast) var(--ease-standard);
 }
-.feedback-radio-option input[type='radio']:checked { border-color: var(--color-brand-gold); }
+.feedback-radio-option input[type='radio']:checked { border-color: var(--color-accent); }
 .feedback-radio-option input[type='radio']:checked::before {
   content: '';
   position: absolute;
   inset: 3px;
   border-radius: 50%;
-  background: var(--color-brand-gold);
+  background: var(--color-accent);
 }
-.feedback-radio-option input[type='radio']:focus-visible { outline: 2px solid var(--color-brand-gold); outline-offset: 2px; }
+.feedback-radio-option input[type='radio']:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 .feedback-screenshot { gap: 8px; }
 .feedback-screenshot-actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -4624,7 +4658,7 @@ textarea.feedback-field-input { min-height: 88px; resize: vertical; }
    match the theme with no custom widget needed, same convention
    `.remember-checkbox`/`.daily-todo-checkbox input[type='checkbox']`
    already established elsewhere in this file. */
-.feedback-system-info-checkbox input[type='checkbox'] { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--color-brand-gold); flex-shrink: 0; cursor: pointer; }
+.feedback-system-info-checkbox input[type='checkbox'] { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--color-accent); flex-shrink: 0; cursor: pointer; }
 .feedback-system-info-summary { color: var(--color-text-muted); font-size: var(--text-xs); }
 
 .feedback-form-actions { display: flex; gap: 12px; justify-content: flex-end; }
@@ -4632,9 +4666,9 @@ textarea.feedback-field-input { min-height: 88px; resize: vertical; }
 
 .feedback-success { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 12px 0; }
 .feedback-success-icon { font-size: var(--text-4xl); }
-.feedback-reference { font-family: var(--font-mono); font-weight: 700; color: var(--color-brand-gold-ink); }
+.feedback-reference { font-family: var(--font-mono); font-weight: 700; color: var(--color-accent-700); }
 /* issue #155 v2 Phase D3 — modal-scoped recolor; falls back to mint in light theme. */
-:root[data-theme='dark'] .feedback-reference { color: var(--color-brand-gold-ink); }
+:root[data-theme='dark'] .feedback-reference { color: var(--color-accent-700); }
 
 .my-reports-list { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
 .my-report-row { border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
@@ -4643,7 +4677,7 @@ textarea.feedback-field-input { min-height: 88px; resize: vertical; }
 .my-report-title { flex: 1; }
 .my-report-meta { font-size: var(--text-xs); color: var(--color-text-muted); }
 .my-report-severity { font-size: var(--text-xs); font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--color-danger-bg); color: var(--color-danger); }
-.my-report-severity-low, .my-report-severity-medium { background: var(--color-warning-bg); color: var(--color-warning-ink); }
+.my-report-severity-low, .my-report-severity-medium { background: var(--color-warning-bg); color: var(--color-warning); }
 .my-report-details { padding: 0 14px 14px; font-size: var(--text-sm); color: var(--color-text); display: flex; flex-direction: column; gap: 6px; }
 
 /* Collapse the feedback trigger to icon-only below 480px (issue #9 §2.1) —
