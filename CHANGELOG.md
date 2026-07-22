@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Test coverage for `shareStore.js`** (issue #277) — `tests/unit/shareStore.test.js` covers `publishRoadmapShare`/`listMyShares`/`revokeRoadmapShare`/`getSharedRoadmap` (success and Firebase-write-rejects failure paths), the one Firebase-backed store in the roadmap-sharing feature with no prior unit coverage. Test-only, no behavior change.
+
 ### Changed
 - **v2 "Modernist" final compliance sweep (issue #309), run after all 6 phases of #289 merged.** A full read-only audit against `.claude/rules/design-system.md`'s binding checklist found 9 violations none of the 5 phases had named — this PR fixes all of them, plus 3 more real, live-reported control-height mismatches found doing the responsive verification pass this PR itself required.
   - **`.btn`'s base rule centered every button label app-wide** (`justify-content: center`) — directly contradicted §4's "never center button labels," affecting every `.btn-primary`/`.btn-secondary`/`.btn-ghost`/`.btn-danger` instance in the app since Phase 1. Removed; flex's default `flex-start` now applies. `.btn-icon` (square icon-only buttons, which have no "label" for this rule to apply to) re-centers itself explicitly so nothing there changed visually. Audited every `.btn`-classed call site first — none currently pair a trailing icon with text, so no `margin-left: auto` follow-up was needed.
