@@ -596,18 +596,62 @@ export function renderDashboard(app, { user, store, dailyTodoStore, activityLogS
   const syncPill = el('span', { className: 'sync-pill', text: 'Syncing' });
 
   const userPillClass = user.isAnonymous ? 'guest' : 'online';
-  const activeTemplateId = store.getSnapshot().activeTemplateId;
-  const isCustomRoadmap = store.isCustomRoadmapId(activeTemplateId);
   // Surfaced in the hero so it's never ambiguous which roadmap is currently
   // loaded — easy to lose track of after switching templates a few times. A
   // custom roadmap (issue #4) has no entry in the template registry, so its
   // name/icon come from customRoadmaps meta instead of getTemplate().
-  const currentTemplate = isCustomRoadmap
-    ? (() => {
-      const custom = store.getSnapshot().customRoadmaps.find(r => r.id === activeTemplateId);
+  //
+  // Extracted to a function (issue #283): the global topic search's
+  // cross-roadmap selection can call store.switchRoadmap() while dashboard.js
+  // is already mounted on /app (no navigation, so renderDashboard() itself
+  // never re-runs) — activeTemplateId/isCustomRoadmap/currentTemplate used to
+  // be resolved once at mount and never touched again, leaving the header
+  // badge (and, since render() reads the same isCustomRoadmap closure
+  // variable, the custom-roadmap-only "+ Add phase"/"+ Add section" controls
+  // too) stuck showing the roadmap active *before* the switch. refreshRoadmapIdentity()
+  // below reassigns all three from handleSnapshot() whenever activeTemplateId
+  // actually changed, ahead of the render(snapshot) call that already runs on
+  // every structural change — so this is a single fix, not two.
+  function resolveCurrentTemplate(snapshot, templateId) {
+    if (store.isCustomRoadmapId(templateId)) {
+      const custom = snapshot.customRoadmaps.find(r => r.id === templateId);
       return { icon: createIcon('edit', { size: 'sm' }), name: custom ? custom.title : 'Custom roadmap' };
-    })()
-    : getTemplate(activeTemplateId);
+    }
+    return getTemplate(templateId);
+  }
+
+  const initialSnapshot = store.getSnapshot();
+  let activeTemplateId = initialSnapshot.activeTemplateId;
+  let isCustomRoadmap = store.isCustomRoadmapId(activeTemplateId);
+  let currentTemplate = resolveCurrentTemplate(initialSnapshot, activeTemplateId);
+
+  // currentTemplate.icon is a decorativeIcon.js name string for a built-in
+  // template (getTemplate(), issue #136 Phase 2 — was a raw emoji string
+  // before), or the shared createIcon() "edit" node for a custom roadmap's
+  // fallback icon (issue #107). Held as stable elements (not rebuilt inline
+  // in the header markup below) so refreshRoadmapIdentity() can update them
+  // in place after a same-page cross-roadmap switch (issue #283).
+  const roadmapBadgeIconSlot = el('span', { 'aria-hidden': 'true' }, [
+    typeof currentTemplate.icon === 'string'
+      ? createDecorativeIcon(currentTemplate.icon, { size: 'sm' })
+      : currentTemplate.icon
+  ]);
+  const roadmapBadgeNameEl = el('span', { text: `${currentTemplate.name} roadmap` });
+
+  function refreshRoadmapIdentity(snapshot) {
+    if (snapshot.activeTemplateId === activeTemplateId) return;
+    activeTemplateId = snapshot.activeTemplateId;
+    isCustomRoadmap = store.isCustomRoadmapId(activeTemplateId);
+    currentTemplate = resolveCurrentTemplate(snapshot, activeTemplateId);
+    roadmapBadgeIconSlot.replaceChildren(
+      typeof currentTemplate.icon === 'string'
+        ? createDecorativeIcon(currentTemplate.icon, { size: 'sm' })
+        : currentTemplate.icon
+    );
+    roadmapBadgeNameEl.textContent = `${currentTemplate.name} roadmap`;
+    const breadcrumbEl = topbar.querySelector('.app-topbar-breadcrumb');
+    if (breadcrumbEl) breadcrumbEl.textContent = `Roadmaps / ${currentTemplate.name}`;
+  }
 
   function persistUi() {
     store.setUiState({
@@ -639,6 +683,49 @@ export function renderDashboard(app, { user, store, dailyTodoStore, activityLogS
     requestAnimationFrame(() => {
       content.querySelector(`.phase-card[data-phase-title="${CSS.escape(targetTitle)}"]`)
         ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  // One-shot cross-roadmap signal (issue #283) — commandPalette.js's global topic
+  // search (wired in topbar.js) writes the target item's id to KEYS.OPEN_ITEM right
+  // before calling store.switchRoadmap()+navigate('/app') for a result in a
+  // *different* roadmap than the one currently active. Read once, then cleared
+  // immediately, same "read once, then clear" precedent as
+  // applyScrollToPhaseSignal() above. Unlike that signal, this one also has a
+  // same-page trigger (the 'ascent:open-item' window event, below) — switching to a
+  // roadmap that's already the active one is a no-op in roadmapStore.js, so no
+  // navigation or structural re-render happens for a same-roadmap search result,
+  // and this function needs to run immediately instead of waiting for a mount that
+  // was never going to happen.
+  function applyOpenItemSignal() {
+    const raw = sessionStorage.getItem(KEYS.OPEN_ITEM);
+    if (!raw) return;
+    sessionStorage.removeItem(KEYS.OPEN_ITEM);
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const targetItem = store.getSnapshot().allItems[payload?.itemId];
+    if (!targetItem || targetItem.deleted) return;
+    const card = content.querySelector(`.phase-card[data-phase-title="${CSS.escape(targetItem.phase)}"]`);
+    if (card) {
+      const pi = Number(card.dataset.phase);
+      if (!openPhases.has(pi)) {
+        openPhases.add(pi);
+        persistUi();
+        render(store.getSnapshot());
+      }
+      requestAnimationFrame(() => {
+        content.querySelector(`.phase-card[data-phase-title="${CSS.escape(targetItem.phase)}"]`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+    openItemPanel({
+      item: targetItem,
+      onSave: patch => store.updateItem(targetItem.id, patch),
+      onDelete: () => store.removeItem(targetItem.id)
     });
   }
 
@@ -1217,7 +1304,13 @@ export function renderDashboard(app, { user, store, dailyTodoStore, activityLogS
       return;
     }
     lastStructuralVersion = snapshot.structuralVersion;
+    refreshRoadmapIdentity(snapshot);
     render(snapshot);
+    // A cross-roadmap topic-search selection (issue #283) that required a real
+    // store.switchRoadmap() call lands here — the switch bumps structuralVersion,
+    // which is exactly the render this signal needs to already have happened
+    // before it can find the target item's phase card in the DOM.
+    applyOpenItemSignal();
   }
 
   const toggleAllBtn = el('button', {
@@ -1359,6 +1452,7 @@ export function renderDashboard(app, { user, store, dailyTodoStore, activityLogS
   const topbar = createTopbar({
     breadcrumb: `Roadmaps / ${currentTemplate.name}`,
     user,
+    store,
     syncPill,
     themeToggleBtn,
     dailyTodoNavBadge,
@@ -1384,14 +1478,8 @@ export function renderDashboard(app, { user, store, dailyTodoStore, activityLogS
           // with a meta row instead of a separate header section.
           el('div', { className: 'roadmap-header' }, [
             el('div', { className: 'current-roadmap-badge' }, [
-              // currentTemplate.icon is a decorativeIcon.js name string for a
-              // built-in template (getTemplate(), issue #136 Phase 2 — was a
-              // raw emoji string before), or the shared createIcon() "edit"
-              // node for a custom roadmap's fallback icon (issue #107).
-              typeof currentTemplate.icon === 'string'
-                ? el('span', { 'aria-hidden': 'true' }, [createDecorativeIcon(currentTemplate.icon, { size: 'sm' })])
-                : el('span', { 'aria-hidden': 'true' }, [currentTemplate.icon]),
-              el('span', { text: `${currentTemplate.name} roadmap` })
+              roadmapBadgeIconSlot,
+              roadmapBadgeNameEl
             ]),
             roadmapMetaRow
           ]),
@@ -1446,7 +1534,20 @@ export function renderDashboard(app, { user, store, dailyTodoStore, activityLogS
   lastStructuralVersion = store.getSnapshot().structuralVersion;
   render(store.getSnapshot());
   applyScrollToPhaseSignal();
+  applyOpenItemSignal();
   maybeShowGuestDataRiskNudge({ user, store });
+
+  // Same-page case for the cross-roadmap search signal above: if the search result
+  // belongs to the roadmap that's already active, store.switchRoadmap() is a no-op
+  // (roadmapStore.js — no notify(), no structural bump), so neither the mount-time
+  // call above nor handleSnapshot() would ever run this. topbar.js dispatches this
+  // event immediately after writing the sessionStorage signal whenever the palette
+  // was opened from a page that's already /app, so it's picked up with no
+  // navigation/remount at all.
+  function onOpenItemEvent() {
+    applyOpenItemSignal();
+  }
+  window.addEventListener('ascent:open-item', onOpenItemEvent);
 
   // Issue #17 — auto-starts once, only for an account that has genuinely
   // finished onboarding but never seen the tour (a freshly-backfilled
@@ -1528,6 +1629,7 @@ export function renderDashboard(app, { user, store, dailyTodoStore, activityLogS
     window.removeEventListener('online', setOnlineState);
     window.removeEventListener('offline', setOnlineState);
     window.removeEventListener('beforeprint', handleBeforePrint);
+    window.removeEventListener('ascent:open-item', onOpenItemEvent);
     printMediaQuery.removeEventListener('change', handlePrintMediaChange);
     unmountPrintSnapshot?.();
     clearTimeout(saveBadgeTimer);
