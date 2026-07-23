@@ -4557,3 +4557,83 @@ explicitly declines to pick a provider/platform or write any Cloud Functions cod
 that decision is left to the repo owner, per the issue's own "treat this as a design
 discussion first" recommendation. No `functions/` directory, no new dependency, no
 `firebase.json`/`.firebaserc` change.
+
+### 2026-07-24 — Issue #293 — First-time feature tour expanded to cover post-#17 features
+
+`buildTourSteps()` (`src/ui/pages/dashboard.js`) grew from 6 to 10 steps — re-audited
+against every user-facing feature shipped since issue #17's original tour, not just the
+handful named in the issue's own starting bullet list. Four new spotlight steps: Settings
+(`.app-sidebar-nav a[href="#/settings"]`), the sidebar account menu covering roadmap
+sharing/backup export/"My reports" (`.app-sidebar-identity`), the feedback widget
+(`.feedback-widget-trigger`), and the changelog "What's New" bell (`.app-topbar-bell`).
+All four were picked specifically because they're unconditionally rendered on a
+brand-new dashboard — unlike `.daily-todo-nav-badge`/`.review-due-nav-badge` (both
+`hidden` until a matching todo/review-due item exists), which would end the tour early
+via `showStep()`'s `if (!target) { end(); return; }` for a fresh account and were
+deliberately left out for that reason, extending the original tour's own reasoning for
+excluding them.
+
+Daily Todos, favorite roadmaps, and AI-import ("Create your own roadmap") have no
+dashboard-page target at all — they live on `onboarding.js`, and this file's own
+`.claude/rules/roadmap-store.md` entry on the tour already documents that every one of
+its spotlight targets is dashboard-only by construction (`dashboard.js`'s
+`createSidebar()` call is the only one that passes `onStartTour`, for the identical
+reason). The "Manage your roadmaps" step's body copy points at all three by name; the
+open design question the issue itself raised — whether they also warrant their own
+spotlight tour on `onboarding.js` — is resolved below, in the same PR, rather than left
+open.
+
+`buildTourSteps()` is now exported (previously module-private), matching the
+`renderFilterChips`/`renderPhaseCard` module-scope-extraction precedent from issue #53 —
+`tests/unit/featureTourSteps.test.js` mounts real `createSidebar()`/`createTopbar()`/
+`createFeedbackWidget()` instances (not hand-rolled DOM stand-ins) and asserts every
+step's `target()` resolves against them, so a future rename of any of these four
+components' classNames breaks this test instead of silently going stale. No change to
+`featureTour.js` itself (the spotlight/portal/focus-trap mechanism) — accessibility
+guarantees (focus trap, Escape-to-skip, the "Step X of Y" `aria-live` region,
+`prefers-reduced-motion` handling) are unchanged by construction and shared by both tours
+below.
+
+**A second, standalone tour for `onboarding.js`, built rather than left as an open
+question.** `buildOnboardingTourSteps({ visibleGrid, getCreateCardEl })` (`onboarding.js`,
+same exported-for-testability precedent as `buildTourSteps()`) spotlights three targets
+that only exist on this page: the Daily Todos panel (`.daily-todo-panel`), a template
+card's ⋯ overflow menu (`.template-card-overflow-btn` — where "Favorite" actually lives
+since issue #206 §4.1 collapsed the old standalone star button into this menu; the
+roadmap-store.md entry documenting `.template-card-favorite` as a real class predates that
+collapse and is now stale, not a live selector), and "Create your own roadmap"
+(`.template-card-create`, via a `getCreateCardEl()` getter rather than a captured
+reference, since the closure-scoped `createCardEl` variable is reassigned on every
+`renderVisibleGrid()`).
+
+This tour has its own independent completion flag, `onboardingTourDone` — a second
+`tourDone`-shaped field in `roadmapStore.js` (`KEYS.ONBOARDING_TOUR_DONE` locally,
+`meta.onboardingTourDone` remotely, its own `firebase/database.rules.json` `.validate`
+rule alongside `tourDone`'s), with its own `completeOnboardingTour()`/
+`resetOnboardingTour()` pair and its own `backfillOnboardingTourDoneIfNeeded()` — same
+backfill reasoning as `backfillTourDoneIfNeeded()`: an account that already has real
+roadmap progress (or reached `onboardingDone` via legacy migration) predates this feature
+and must never see it auto-fire retroactively. **Auto-start condition, a new pure
+`shouldAutoStartOnboardingTour(snapshot, isSwitchingTemplate)` extracted out of
+`renderOnboarding()` to keep its own complexity under the ESLint gate**:
+`isSwitchingTemplate && tourDone === true && onboardingTourDone === false` — deliberately
+requires `tourDone` (the dashboard tour) to already be `true`, whether it was finished or
+skipped, so this second tour only ever appears on a genuine *return* visit to "My
+Roadmaps," never during first-time template picking, and always after the dashboard tour
+has already introduced the spotlight/popover mechanism once. Manually replayable from
+`onboarding.js`'s own account dropdown ("Take a tour," next to Settings) — this page
+rebuilds its own account menu rather than using `sidebar.js`'s (see that section's own
+"no app-shell sidebar" note), so the item is added there directly, calling
+`store.resetOnboardingTour()` then re-running the tour, the identical two-call shape
+`dashboard.js`'s own "Take a tour" item already uses.
+
+`tests/unit/onboardingTour.test.js` mounts a real `renderOnboarding()` page (real
+`createDailyTodoPanel()`, real template cards) and asserts every step's `target()`
+resolves, plus dedicated tests for `shouldAutoStartOnboardingTour()`'s four branches and
+the manual-replay menu item. `tests/integration/roadmapStore.test.js` gained a full
+`onboardingTourDone`/`completeOnboardingTour`/`resetOnboardingTour` describe block
+mirroring `tourDone`'s own test suite line for line, plus one test confirming the two
+flags are genuinely independent (completing the dashboard tour never flips the onboarding
+one). `tests/e2e/featureTour.test.js` (Firebase-emulator-gated) gained three new
+scenarios: auto-start on return visit + no-reappear-on-reload, never-auto-runs during
+first-time picking, and manual replay.
