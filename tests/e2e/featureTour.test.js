@@ -19,7 +19,7 @@ test.describe('feature tour (issue #17)', () => {
     await expect(page.locator('.tour-welcome-card')).toBeVisible({ timeout: 10_000 });
     await page.click('.tour-welcome-card [data-action="start"]');
 
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < 10; i += 1) {
       await expect(page.locator('.tour-popover')).toBeVisible();
       await page.click('.tour-popover [data-action="next"], .tour-popover [data-action="finish"]');
     }

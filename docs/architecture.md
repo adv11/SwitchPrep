@@ -4557,3 +4557,39 @@ explicitly declines to pick a provider/platform or write any Cloud Functions cod
 that decision is left to the repo owner, per the issue's own "treat this as a design
 discussion first" recommendation. No `functions/` directory, no new dependency, no
 `firebase.json`/`.firebaserc` change.
+
+### 2026-07-24 — Issue #293 — First-time feature tour expanded to cover post-#17 features
+
+`buildTourSteps()` (`src/ui/pages/dashboard.js`) grew from 6 to 10 steps — re-audited
+against every user-facing feature shipped since issue #17's original tour, not just the
+handful named in the issue's own starting bullet list. Four new spotlight steps: Settings
+(`.app-sidebar-nav a[href="#/settings"]`), the sidebar account menu covering roadmap
+sharing/backup export/"My reports" (`.app-sidebar-identity`), the feedback widget
+(`.feedback-widget-trigger`), and the changelog "What's New" bell (`.app-topbar-bell`).
+All four were picked specifically because they're unconditionally rendered on a
+brand-new dashboard — unlike `.daily-todo-nav-badge`/`.review-due-nav-badge` (both
+`hidden` until a matching todo/review-due item exists), which would end the tour early
+via `showStep()`'s `if (!target) { end(); return; }` for a fresh account and were
+deliberately left out for that reason, extending the original tour's own reasoning for
+excluding them.
+
+Daily Todos, favorite roadmaps, and AI-import ("Create your own roadmap") have no
+dashboard-page target at all — they live on `onboarding.js`, and this file's own
+`.claude/rules/roadmap-store.md` entry on the tour already documents that every one of
+its spotlight targets is dashboard-only by construction (`dashboard.js`'s
+`createSidebar()` call is the only one that passes `onStartTour`, for the identical
+reason). Rather than either silently dropping those three features from the tour or
+silently building a second onboarding-page tour infrastructure to cover them — both of
+which the issue explicitly asked not to decide unilaterally — the "Manage your roadmaps"
+step's body copy now points at all three by name, and a page-specific contextual tour for
+`onboarding.js` is flagged as an open follow-up in the issue itself.
+
+`buildTourSteps()` is now exported (previously module-private), matching the
+`renderFilterChips`/`renderPhaseCard` module-scope-extraction precedent from issue #53 —
+`tests/unit/featureTourSteps.test.js` mounts real `createSidebar()`/`createTopbar()`/
+`createFeedbackWidget()` instances (not hand-rolled DOM stand-ins) and asserts every
+step's `target()` resolves against them, so a future rename of any of these four
+components' classNames breaks this test instead of silently going stale. No change to
+`featureTour.js` itself (the spotlight/portal/focus-trap mechanism) or to `tourDone`'s
+store contract — accessibility guarantees (focus trap, Escape-to-skip, the "Step X of Y"
+`aria-live` region, `prefers-reduced-motion` handling) are unchanged by construction.

@@ -281,7 +281,35 @@ export function renderFilterChips(items, activeFilter, onFilterChange) {
 // Todo-badge were deliberately left out to keep this a tight, day-one-only
 // walkthrough (ongoing discovery is the changelog "New" badge system's job,
 // not this feature's, per that same re-audit).
-function buildTourSteps() {
+//
+// Issue #293 — re-audited against every feature shipped since #17 and added
+// 4 more stops: Settings, the account menu (share/backup/reports), the
+// feedback widget, and the changelog bell. All four resolve reliably on a
+// brand-new dashboard (a fixed nav link, a fixed sidebar footer button, an
+// app-lifetime `document.body` trigger, and a fixed topbar button — none of
+// them conditionally rendered), unlike `.daily-todo-nav-badge`/
+// `.review-due-nav-badge` just above them in this same file, which are
+// `hidden` until a matching todo/review-due item exists and would end the
+// tour early (`showStep()`'s `if (!target) { end(); return; }`) for a
+// fresh account with neither yet — deliberately still left out of this list
+// for that reason, same as the original re-audit's own reasoning above.
+// Daily Todos, favorite roadmaps, and AI-import/"Create your own roadmap"
+// have no dashboard-page target at all — per this file's own established
+// constraint (`.claude/rules/roadmap-store.md`'s "Gating and manual replay"
+// note: "every one of the tour's spotlight querySelector targets is
+// dashboard-only"), they live on `onboarding.js` instead, so they're folded
+// into the "Manage your roadmaps" step's body copy as a pointer rather than
+// given their own spotlight step. A second, onboarding-page-specific
+// contextual tour is the more complete fix for those three — flagged as an
+// open design question in issue #293 itself rather than silently built or
+// silently dropped.
+// Exported (issue #293) for the same reason `renderFilterChips`/
+// `renderPhaseCard` are module-scope rather than closures inside
+// `renderDashboard` (issue #53's extraction precedent, see the comment above
+// `renderFilterChips`'s own describe block in dashboard.test.js) — so this
+// step list is independently testable against real, separately-mounted
+// component instances without needing to render the whole dashboard.
+export function buildTourSteps() {
   return [
     {
       // The first phase is open by default on a fresh roadmap (openPhases
@@ -304,14 +332,34 @@ function buildTourSteps() {
       body: 'Streaks, charts, and your full history live on the Progress page.'
     },
     {
-      target: () => document.querySelector('.app-topbar .theme-toggle'),
-      title: 'Switch themes',
-      body: 'Switch between light and dark anytime in the top bar — it’s remembered across visits.'
-    },
-    {
       target: () => document.querySelector('.app-sidebar-nav a[href="#/onboarding"]'),
       title: 'Manage your roadmaps',
-      body: 'Manage and switch between all your roadmaps anytime — your progress stays intact.'
+      body: 'Switch between all your roadmaps anytime — your progress stays intact. This is also where you\'ll find Daily Todos, favorite roadmaps, and the option to build your own roadmap with AI.'
+    },
+    {
+      target: () => document.querySelector('.app-sidebar-nav a[href="#/settings"]'),
+      title: 'Update your settings',
+      body: 'Manage your profile, password, and account preferences from Settings.'
+    },
+    {
+      target: () => document.querySelector('.app-sidebar-identity'),
+      title: 'Share, back up, and review reports',
+      body: 'Open your account menu to share a read-only roadmap link, download a backup, or see your past feedback reports.'
+    },
+    {
+      target: () => document.querySelector('.feedback-widget-trigger'),
+      title: 'Send feedback anytime',
+      body: 'Spotted a bug or have an idea? Use this button to send feedback straight to us.'
+    },
+    {
+      target: () => document.querySelector('.app-topbar-bell'),
+      title: 'See what\'s new',
+      body: 'Click the bell anytime to see recent updates and new features as they ship.'
+    },
+    {
+      target: () => document.querySelector('.app-topbar .theme-toggle'),
+      title: 'Switch themes',
+      body: 'Switch between light and dark anytime in the top bar — it\'s remembered across visits.'
     },
     {
       target: () => document.querySelector('.app-topbar-command-btn'),
