@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-1358%20passing-15803d?style=flat-square">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-1377%20passing-15803d?style=flat-square">
   <img alt="Stack" src="https://img.shields.io/badge/stack-vanilla%20JS%20%C2%B7%20no%20build%20step-D9A441?style=flat-square">
   <img alt="Firebase" src="https://img.shields.io/badge/backend-Firebase-FFA000?style=flat-square">
   <img alt="License" src="https://img.shields.io/badge/license-all%20rights%20reserved-333333?style=flat-square">
@@ -244,7 +244,7 @@ source of truth for current status — see it for the full, up-to-date list of w
 left. See [`CHANGELOG.md`](CHANGELOG.md) for the detailed change history and
 [`docs/roadmap.md`](docs/roadmap.md) for a pointer to the same tracker.
 
-Tests run via `npm test` (Vitest unit + integration, 1358 tests) and `npm run test:e2e`
+Tests run via `npm test` (Vitest unit + integration, 1377 tests) and `npm run test:e2e`
 (Playwright). Run `npm run lint` to check for security and quality issues. See the
 "Verifying changes" section of [`CLAUDE.md`](CLAUDE.md) for the full checklist.
 
