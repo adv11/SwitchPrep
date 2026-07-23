@@ -304,6 +304,51 @@ describe('openCreateRoadmapModal — paste-and-import column', () => {
     vi.useRealTimers();
   });
 
+  it('pasting valid JSON with no duplicate titles shows only the plain success message, no duplicate note (issue #327)', () => {
+    vi.useFakeTimers();
+    openCreateRoadmapModal();
+    const overlay = getOverlay();
+    const pasteArea = overlay.querySelector('.import-paste-area');
+
+    pasteArea.value = validJsonText();
+    pasteArea.dispatchEvent(new Event('input'));
+    vi.advanceTimersByTime(300);
+
+    const summary = overlay.querySelector('.form-message.success').textContent;
+    expect(summary).toContain('2 topics found');
+    expect(summary).not.toMatch(/duplicate/i);
+    vi.useRealTimers();
+  });
+
+  it('pasting valid JSON with a duplicate topic title across phases appends a duplicate-count note to the success message (issue #327)', () => {
+    vi.useFakeTimers();
+    openCreateRoadmapModal();
+    const overlay = getOverlay();
+    const pasteArea = overlay.querySelector('.import-paste-area');
+    const importBtn = findButton(overlay, 'Import roadmap');
+
+    const duplicateJson = JSON.stringify({
+      schemaVersion: 1,
+      title: 'My Roadmap',
+      phases: [
+        { title: 'Phase One', priority: 'P1', sections: [{ title: 'Section One', items: ['Learn Docker basics'] }] },
+        { title: 'Phase Two', priority: 'P2', sections: [{ title: 'Section Two', items: ['learn docker basics'] }] }
+      ]
+    });
+    pasteArea.value = duplicateJson;
+    pasteArea.dispatchEvent(new Event('input'));
+    vi.advanceTimersByTime(300);
+
+    const summary = overlay.querySelector('.form-message.success').textContent;
+    expect(summary).toContain('2 topics found');
+    expect(summary).toMatch(/1 topic looks like duplicates across phases/i);
+    // Non-blocking — the import button is still enabled and the resolved
+    // value carries the count alongside droppedResourceCount, never a
+    // validation error.
+    expect(importBtn.disabled).toBe(false);
+    vi.useRealTimers();
+  });
+
   it('pasting a fenced-code-block-wrapped valid payload still imports successfully', () => {
     vi.useFakeTimers();
     openCreateRoadmapModal();
@@ -338,6 +383,33 @@ describe('openCreateRoadmapModal — paste-and-import column', () => {
     expect(result.phases).toHaveLength(1);
     expect(Object.keys(result.items)).toHaveLength(2);
     expect(getOverlay()).toBeNull();
+  });
+
+  it('resolves duplicateTitleCount alongside droppedResourceCount when "Import roadmap" is clicked (issue #327)', async () => {
+    vi.useFakeTimers();
+    const promise = openCreateRoadmapModal();
+    const overlay = getOverlay();
+    const pasteArea = overlay.querySelector('.import-paste-area');
+    const importBtn = findButton(overlay, 'Import roadmap');
+
+    const duplicateJson = JSON.stringify({
+      schemaVersion: 1,
+      title: 'My Roadmap',
+      phases: [
+        { title: 'Phase One', priority: 'P1', sections: [{ title: 'Section One', items: ['Learn Docker basics'] }] },
+        { title: 'Phase Two', priority: 'P2', sections: [{ title: 'Section Two', items: ['learn docker basics'] }] }
+      ]
+    });
+    pasteArea.value = duplicateJson;
+    pasteArea.dispatchEvent(new Event('input'));
+    vi.advanceTimersByTime(300);
+    vi.useRealTimers();
+
+    importBtn.click();
+    const result = await promise;
+
+    expect(result.duplicateTitleCount).toBe(1);
+    expect(result.droppedResourceCount).toBe(0);
   });
 
   it('resolves null when Cancel is clicked', async () => {

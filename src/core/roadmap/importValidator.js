@@ -262,6 +262,57 @@ export function validateImportPayload(data) {
   return errors;
 }
 
+// Collects every item's title text across the whole payload (all phases,
+// sections, items), in whichever of the three item shapes it's found in —
+// reuses extractItemTitleText() rather than a second extraction path. Only
+// non-empty string titles are collected; a malformed item (already reported
+// separately by validateImportPayload's own checks) contributes nothing here
+// rather than throwing.
+function collectItemTitles(data) {
+  const titles = [];
+  if (!Array.isArray(data?.phases)) return titles;
+  data.phases.forEach(phase => {
+    if (!Array.isArray(phase?.sections)) return;
+    phase.sections.forEach(section => {
+      if (!Array.isArray(section?.items)) return;
+      section.items.forEach(item => {
+        const title = extractItemTitleText(item);
+        if (typeof title === 'string' && title.trim()) titles.push(title.trim());
+      });
+    });
+  });
+  return titles;
+}
+
+// Issue #327 — a known LLM failure mode is repeating the same (or a
+// case/whitespace-varied) topic title across two different phases/sections
+// with nothing in the app ever flagging it. This is deliberately **not** a
+// validation error: a legitimately repeated topic name (e.g. "Practice
+// problems" recurring by design in several phases) is entirely possible, so
+// duplicate detection must never fail import — see importRoadmapModal.js's
+// summary line and schemaAdapter.js's threading of this count alongside
+// droppedResourceCount for the "informational note, not a blocking error"
+// treatment, following the exact precedent issue #121 established for
+// dropped resource URLs. Case-insensitive, trimmed exact match only — no
+// fuzzy/Levenshtein matching (a larger, more error-prone undertaking better
+// left for a future follow-up if this simple version proves insufficient).
+// Returns the total number of "extra" occurrences across every repeated
+// title (a title appearing 3 times contributes 2, not 3, to the count) —
+// this is what reads naturally in the summary line as "N topics look like
+// duplicates," not "N distinct duplicated titles."
+export function findDuplicateTitles(data) {
+  const counts = new Map();
+  collectItemTitles(data).forEach(title => {
+    const key = title.toLowerCase();
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  let duplicateCount = 0;
+  counts.forEach(count => {
+    if (count > 1) duplicateCount += count - 1;
+  });
+  return duplicateCount;
+}
+
 // Convenience wrapper combining parse + validate for UI call sites — returns
 // `{ valid, errors, data }` where `data` is only set when `valid` is true.
 export function validateImportText(rawText) {

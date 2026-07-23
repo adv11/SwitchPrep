@@ -21,6 +21,25 @@ import { pickCustomRoadmapIcon } from '../utils/customRoadmapIcon.js';
 import { createIcon } from '../components/icons.js';
 import { createDecorativeIcon } from '../components/decorativeIcon.js';
 
+// Issue #327 — extracted out of handleCreate() to keep its own complexity
+// under the ESLint gate (root CLAUDE.md); builds the info-toast copy for
+// whichever of droppedResourceCount (issue #121)/duplicateTitleCount is
+// nonzero, joining both notes onto one toast when both apply. Pure — no
+// DOM/store access.
+function buildImportResultToast(droppedResourceCount, duplicateTitleCount) {
+  const notes = [];
+  if (droppedResourceCount > 0) {
+    notes.push(`${droppedResourceCount} resource link${droppedResourceCount === 1 ? '' : 's'} skipped (invalid URL).`);
+  }
+  if (duplicateTitleCount > 0) {
+    notes.push(`${duplicateTitleCount} topic${duplicateTitleCount === 1 ? '' : 's'} look${duplicateTitleCount === 1 ? 's' : ''} like duplicates across phases — you can review and merge them after importing.`);
+  }
+  return {
+    message: notes.length > 0 ? `Roadmap imported — ${notes.join(' ')}` : 'Roadmap imported.',
+    type: notes.length > 0 ? 'info' : 'success'
+  };
+}
+
 // Picking a roadmap (built-in template or custom) awaits a real
 // `store.switchRoadmap()` — a Firebase round-trip for anything not already
 // cached this session — before navigating to `/app`. A real, reported bug:
@@ -192,15 +211,11 @@ export function renderOnboarding(app, { user, store, dailyTodoStore }) {
     // picking-overlay above already fixed for switching roadmaps.
     createCardEl?.classList.add('picking');
     try {
-      const { droppedResourceCount, ...roadmap } = result;
+      const { droppedResourceCount, duplicateTitleCount, ...roadmap } = result;
       await store.createCustomRoadmap(roadmap);
       navigate('/app', true);
-      showToast(
-        droppedResourceCount > 0
-          ? `Roadmap imported — ${droppedResourceCount} resource link${droppedResourceCount === 1 ? '' : 's'} skipped (invalid URL).`
-          : 'Roadmap imported.',
-        droppedResourceCount > 0 ? 'info' : 'success'
-      );
+      const { message, type } = buildImportResultToast(droppedResourceCount, duplicateTitleCount);
+      showToast(message, type);
     } catch (error) {
       console.error('Failed to create custom roadmap', error);
       picking = false;

@@ -273,6 +273,40 @@ describe('adaptImportToRoadmap — droppedResourceCount reporting (issue #121)',
   });
 });
 
+// Issue #327: duplicateTitleCount flows through adaptImportToRoadmap's
+// return value alongside droppedResourceCount, following the exact same
+// non-blocking, informational precedent issue #121 established.
+describe('adaptImportToRoadmap — duplicateTitleCount reporting (issue #327)', () => {
+  it('returns 0 when no title is duplicated', () => {
+    const { duplicateTitleCount } = adaptImportToRoadmap(payload());
+    expect(duplicateTitleCount).toBe(0);
+  });
+
+  it('counts a title repeated across two different phases', () => {
+    const data = payload({
+      phases: [
+        { title: 'Phase One', priority: 'P1', sections: [{ title: 'Section One', items: ['Learn Docker basics'] }] },
+        { title: 'Phase Two', priority: 'P2', sections: [{ title: 'Section Two', items: ['learn docker basics'] }] }
+      ]
+    });
+    const { duplicateTitleCount } = adaptImportToRoadmap(data);
+    expect(duplicateTitleCount).toBe(1);
+  });
+
+  it('never affects the resulting items/phases — purely informational, non-blocking', () => {
+    const data = payload({
+      phases: [
+        { title: 'Phase One', priority: 'P1', sections: [{ title: 'Section One', items: ['Practice problems'] }] },
+        { title: 'Phase Two', priority: 'P2', sections: [{ title: 'Section Two', items: ['Practice problems'] }] }
+      ]
+    });
+    const { items, duplicateTitleCount } = adaptImportToRoadmap(data);
+    expect(duplicateTitleCount).toBe(1);
+    expect(Object.keys(items)).toHaveLength(2);
+    expect(Object.values(items).map(i => i.title)).toEqual(['Practice problems', 'Practice problems']);
+  });
+});
+
 // Issue #100 follow-up: normalize priority casing/whitespace consistently
 // with importValidator.js's normalizePriority(), so an item that passed
 // validation with "p0"/" P0 " still ends up with the canonical "P0" in the
