@@ -2,7 +2,7 @@ import { el, debounce } from '../dom.js';
 import { attachFocusTrap } from './modal.js';
 import { createSelect } from './select.js';
 import { buildImportPrompt, buildImportFixPrompt } from '../../data/importPrompt.js';
-import { validateImportText } from '../../core/roadmap/importValidator.js';
+import { validateImportText, findDuplicateTitles } from '../../core/roadmap/importValidator.js';
 import { adaptImportToRoadmap } from '../../core/roadmap/schemaAdapter.js';
 import { KEYS } from '../../services/localStorageKeys.js';
 
@@ -399,7 +399,16 @@ export function openCreateRoadmapModal() {
       if (result.valid) {
         lastValidData = result.data;
         const count = countItems(result.data);
-        summaryMsg.textContent = `Looks good — ${count} topic${count === 1 ? '' : 's'} found.`;
+        const duplicateCount = findDuplicateTitles(result.data);
+        // Issue #327 — duplicates are surfaced as an extra informational
+        // line appended to the same success message, never as a separate
+        // error state — a legitimately repeated topic title (e.g. "Practice
+        // problems" recurring by design) is possible, so this must never
+        // block import.
+        const duplicateNote = duplicateCount > 0
+          ? ` ${duplicateCount} topic${duplicateCount === 1 ? '' : 's'} look${duplicateCount === 1 ? 's' : ''} like duplicates across phases — you can review and merge them after importing.`
+          : '';
+        summaryMsg.textContent = `Looks good — ${count} topic${count === 1 ? '' : 's'} found.${duplicateNote}`;
         summaryMsg.className = 'form-message success';
         importBtn.disabled = false;
       } else {
@@ -416,9 +425,9 @@ export function openCreateRoadmapModal() {
 
     importBtn.addEventListener('click', () => {
       if (!lastValidData) return;
-      const { phases, items, droppedResourceCount } = adaptImportToRoadmap(lastValidData);
+      const { phases, items, droppedResourceCount, duplicateTitleCount } = adaptImportToRoadmap(lastValidData);
       clearDraft();
-      close({ title: lastValidData.title, phases, items, droppedResourceCount });
+      close({ title: lastValidData.title, phases, items, droppedResourceCount, duplicateTitleCount });
     });
 
     const pasteColumn = el('div', { className: 'import-column import-column-paste' }, [

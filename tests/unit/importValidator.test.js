@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseImportJson, validateImportPayload, validateImportText, SUPPORTED_SCHEMA_VERSION, MAX_IMPORT_TEXT_LENGTH } from '../../src/core/roadmap/importValidator.js';
+import { parseImportJson, validateImportPayload, validateImportText, findDuplicateTitles, SUPPORTED_SCHEMA_VERSION, MAX_IMPORT_TEXT_LENGTH } from '../../src/core/roadmap/importValidator.js';
 import { MAX_TITLE_LENGTH } from '../../src/core/roadmap/limits.js';
 
 function validPayload() {
@@ -746,6 +746,77 @@ describe('validateImportPayload — cross-provider/edge-case matrix (issue #121 
     // Round 3: fully corrected.
     const round3 = { ...round2, phases: [{ ...round2.phases[0], sections: [{ title: 'Section One', items: ['Learn the basics'] }] }] };
     expect(validateImportPayload(round3)).toEqual([]);
+  });
+});
+
+describe('findDuplicateTitles — non-blocking duplicate-topic detection (issue #327)', () => {
+  it('is non-blocking: validateImportPayload never reports an error for a duplicate title', () => {
+    const data = {
+      schemaVersion: SUPPORTED_SCHEMA_VERSION,
+      title: 'Test Roadmap',
+      phases: [
+        { title: 'Fundamentals', priority: 'P0', sections: [{ title: 'Section One', items: ['Learn Docker basics'] }] },
+        { title: 'Containerization', priority: 'P1', sections: [{ title: 'Section Two', items: ['Learn Docker basics'] }] }
+      ]
+    };
+    expect(validateImportPayload(data)).toEqual([]);
+  });
+
+  it('counts a case- and whitespace-varied title repeated across two different phases as one duplicate', () => {
+    const data = {
+      schemaVersion: SUPPORTED_SCHEMA_VERSION,
+      title: 'Test Roadmap',
+      phases: [
+        { title: 'Fundamentals', priority: 'P0', sections: [{ title: 'Section One', items: ['Learn Docker Basics'] }] },
+        { title: 'Containerization', priority: 'P1', sections: [{ title: 'Section Two', items: ['  learn docker basics  '] }] }
+      ]
+    };
+    expect(findDuplicateTitles(data)).toBe(1);
+  });
+
+  it('returns 0 for a payload with no duplicate titles (no false positive)', () => {
+    const data = {
+      schemaVersion: SUPPORTED_SCHEMA_VERSION,
+      title: 'Test Roadmap',
+      phases: [
+        { title: 'Fundamentals', priority: 'P0', sections: [{ title: 'Section One', items: ['Learn Docker basics', ['Learn Kubernetes', 'P1']] }] },
+        { title: 'Containerization', priority: 'P1', sections: [{ title: 'Section Two', items: [{ title: 'Deploy to production' }] }] }
+      ]
+    };
+    expect(findDuplicateTitles(data)).toBe(0);
+  });
+
+  it('treats a title legitimately recurring by design (e.g. "Practice problems" in several phases) the same as any other duplicate — detected, not blocked', () => {
+    const data = {
+      schemaVersion: SUPPORTED_SCHEMA_VERSION,
+      title: 'Test Roadmap',
+      phases: [
+        { title: 'Phase One', priority: 'P0', sections: [{ title: 'Section One', items: ['Practice problems'] }] },
+        { title: 'Phase Two', priority: 'P1', sections: [{ title: 'Section Two', items: ['Practice problems'] }] },
+        { title: 'Phase Three', priority: 'P2', sections: [{ title: 'Section Three', items: ['Practice problems'] }] }
+      ]
+    };
+    expect(validateImportPayload(data)).toEqual([]);
+    expect(findDuplicateTitles(data)).toBe(2);
+  });
+
+  it('counts duplicates across all three item shapes (plain string, tuple, object)', () => {
+    const data = {
+      schemaVersion: SUPPORTED_SCHEMA_VERSION,
+      title: 'Test Roadmap',
+      phases: [
+        { title: 'Phase One', priority: 'P0', sections: [{ title: 'Section One', items: ['Set up your environment'] }] },
+        { title: 'Phase Two', priority: 'P1', sections: [{ title: 'Section Two', items: [['Set up your environment', 'P2']] }] },
+        { title: 'Phase Three', priority: 'P2', sections: [{ title: 'Section Three', items: [{ title: 'Set up your environment' }] }] }
+      ]
+    };
+    expect(findDuplicateTitles(data)).toBe(2);
+  });
+
+  it('returns 0 for a malformed/empty payload rather than throwing', () => {
+    expect(findDuplicateTitles({})).toBe(0);
+    expect(findDuplicateTitles(null)).toBe(0);
+    expect(findDuplicateTitles({ phases: 'not an array' })).toBe(0);
   });
 });
 

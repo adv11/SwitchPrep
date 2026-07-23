@@ -6,7 +6,7 @@
 // validateImportPayload(); it does not re-validate title/priority/resource
 // *shape* (that already happened), but resource *URLs* are specifically
 // normalized/filtered here — see normalizeResourceUrl()/isHttpUrl() below.
-import { normalizePriority } from './importValidator.js';
+import { normalizePriority, findDuplicateTitles } from './importValidator.js';
 
 function genId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -111,5 +111,12 @@ export function adaptImportToRoadmap(data) {
     phases.push({ id: genId('phase'), title: phase.title, priority: phasePriority, resourceKey: null, sections });
   });
 
-  return { phases, items, droppedResourceCount };
+  // Issue #327 — duplicate detection runs against the original payload (not
+  // the freshly-generated `items` map above, whose per-item ids would defeat
+  // any title comparison) and is threaded through the same top-level shape
+  // droppedResourceCount already established: non-blocking, purely
+  // informational, surfaced by importRoadmapModal.js/onboarding.js.
+  const duplicateTitleCount = findDuplicateTitles(data);
+
+  return { phases, items, droppedResourceCount, duplicateTitleCount };
 }

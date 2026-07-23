@@ -578,6 +578,32 @@ only covers the "dropped-URL" half of item 3's two root causes — the other hal
 shape that structurally can't carry `resources` at all, e.g. a plain string or tuple item)
 is unaddressed; see issue #121 for the full investigation.
 
+**Duplicate-topic detection — informational, never blocking (issue #327).** A known LLM
+failure mode is repeating the same (or a case/whitespace-varied) topic title across two
+different phases/sections with nothing to flag it — `importValidator.js`'s
+`findDuplicateTitles(data)` is a **pure** function (no DOM/store/Firebase access) scanning
+every item title across the whole payload (all phases, sections, items, in whichever of
+the three item shapes it's found in), case-insensitive and trimmed, exact match only — no
+fuzzy/Levenshtein matching, a larger, more error-prone undertaking left for a future
+follow-up if this simple version proves insufficient. This deliberately does **not**
+participate in `validateImportPayload()`'s error list — unlike every other check in that
+file, a duplicate must never fail import, since a legitimately repeated topic name (e.g.
+"Practice problems" recurring by design as a section title in several phases) is entirely
+possible. `adaptImportToRoadmap()` (`schemaAdapter.js`) calls `findDuplicateTitles(data)`
+against the original payload (never the freshly-generated `items` map, whose per-item ids
+would defeat any title comparison) and returns `duplicateTitleCount` alongside
+`droppedResourceCount` in the exact same top-level shape — `{ phases, items,
+droppedResourceCount, duplicateTitleCount }` — threaded through `importRoadmapModal.js`'s
+resolved value to `onboarding.js`'s `handleCreate()`, following the identical "info toast,
+not a blocking error" precedent issue #121 already established for dropped resource URLs.
+`importRoadmapModal.js`'s own success-path `summaryMsg` also calls `findDuplicateTitles()`
+directly (during live validation, before the "Import roadmap" click) so the count shows up
+immediately as an extra sentence appended to "Looks good — N topics found." (e.g. "3 topics
+look like duplicates across phases — you can review and merge them after importing."),
+never as a separate error state. Out of scope, matching issue #121's dropped-resource
+precedent: automatically merging or removing duplicates — the user decides, using the
+existing manual phase/section/item CRUD tools.
+
 **Corrupted-text detection — a real, reported data-corruption bug (issue #100 follow-up).**
 Some AI chat UIs auto-linkify raw URLs found inside a code block when a user selects and
 copies *rendered* text instead of using the tool's own "copy raw"/"copy code" button —
