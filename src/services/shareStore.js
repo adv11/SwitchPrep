@@ -11,6 +11,25 @@ import { buildRoadmapShareSnapshot } from '../core/roadmap/shareSchema.js';
 
 const FIREBASE_TIMEOUT_MS = 15000;
 
+// Issue #375 — same lost-update race issue #153/#350 already fixed for
+// roadmapStore.js's startedTemplateIds/customRoadmaps/favoriteRoadmapIds/
+// hiddenTemplateIds: a plain read-modify-write on shareIds lets two
+// overlapping publish/revoke calls each read the array before either write
+// lands, so whichever update() resolves last silently drops the other
+// call's change. roadmapStore.js's serializeMetaMutation() isn't importable
+// here — it's created fresh inside createRoadmapStore()'s closure, not
+// exported at module scope — so this is a dedicated equivalent: a single
+// in-module promise queue every shareIds mutation chains behind. The
+// computation of the next shareIds array must happen *inside* the queued
+// closure (not before it), same discipline roadmap-store.md documents —
+// wrapping an already-computed array in the queue doesn't fix the race.
+let shareIdsMutationQueue = Promise.resolve();
+function serializeShareIdsMutation(run) {
+  const settled = shareIdsMutationQueue.then(run, run);
+  shareIdsMutationQueue = settled.then(() => {}, () => {});
+  return settled;
+}
+
 async function getShareIds(uid) {
   const snap = await withTimeout(
     get(ref(database, `users/${uid}/meta/shareIds`)),
@@ -28,24 +47,28 @@ async function getShareIds(uid) {
 export async function publishRoadmapShare(uid, roadmapSnapshot, title) {
   const shareId = crypto.randomUUID();
   const payload = buildRoadmapShareSnapshot(roadmapSnapshot, { uid, title });
-  const shareIds = await getShareIds(uid);
-  const updates = {
-    [`sharedRoadmaps/${shareId}`]: payload,
-    [`users/${uid}/meta/shareIds`]: [...shareIds, shareId]
-  };
-  await withTimeout(update(ref(database), updates), FIREBASE_TIMEOUT_MS, 'Timed out publishing your share link');
-  return shareId;
+  return serializeShareIdsMutation(async () => {
+    const shareIds = await getShareIds(uid);
+    const updates = {
+      [`sharedRoadmaps/${shareId}`]: payload,
+      [`users/${uid}/meta/shareIds`]: [...shareIds, shareId]
+    };
+    await withTimeout(update(ref(database), updates), FIREBASE_TIMEOUT_MS, 'Timed out publishing your share link');
+    return shareId;
+  });
 }
 
 // Deletes the shared snapshot (the link 404s immediately after — see
 // sharedRoadmapView.js's revoked state) and drops it from the owner's index.
 export async function revokeRoadmapShare(uid, shareId) {
-  const shareIds = await getShareIds(uid);
-  const updates = {
-    [`sharedRoadmaps/${shareId}`]: null,
-    [`users/${uid}/meta/shareIds`]: shareIds.filter(id => id !== shareId)
-  };
-  await withTimeout(update(ref(database), updates), FIREBASE_TIMEOUT_MS, 'Timed out revoking that share link');
+  return serializeShareIdsMutation(async () => {
+    const shareIds = await getShareIds(uid);
+    const updates = {
+      [`sharedRoadmaps/${shareId}`]: null,
+      [`users/${uid}/meta/shareIds`]: shareIds.filter(id => id !== shareId)
+    };
+    await withTimeout(update(ref(database), updates), FIREBASE_TIMEOUT_MS, 'Timed out revoking that share link');
+  });
 }
 
 // The signed-in owner's own list of currently-published shares, for the

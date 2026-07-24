@@ -103,6 +103,110 @@ describe('publishRoadmapShare', () => {
   });
 });
 
+// Issue #375 — same lost-update race issue #153/#350 already fixed for
+// roadmapStore.js's array-field meta mutations: two overlapping publish/revoke
+// calls used to each read shareIds before either write landed, so whichever
+// update() resolved last silently dropped the other call's change. These
+// tests fail against the pre-fix code (verified by temporarily reverting
+// serializeShareIdsMutation and confirming the second overlapping call's
+// write carries only its own id) and pass against the fix.
+describe('lost-update race on shareIds — issue #375', () => {
+  const roadmapSnapshot = {
+    activeTemplateId: 'java-backend',
+    phases: [{ id: 'phase-1', title: 'Phase 1' }],
+    allItems: {
+      'item-1': {
+        title: 'Learn Spring Boot',
+        phase: 'Phase 1',
+        section: 'Section 1',
+        priority: 'P0',
+        done: false,
+        resources: []
+      }
+    }
+  };
+
+  it('two overlapping publishRoadmapShare() calls both survive in shareIds, even when the first call\'s update() is the slow one', async () => {
+    const ids = ['share-1', 'share-2'];
+    vi.stubGlobal('crypto', { randomUUID: () => ids.shift() });
+    // Mock get() to reflect committed writes (as real Firebase does on a
+    // read-after-write) — the fix relies on the second queued closure's
+    // getShareIds() only running after the first closure's update() has
+    // actually settled, so the mock must track state rather than return a
+    // static snapshot forever.
+    let committedShareIds = [];
+    get.mockImplementation(() => Promise.resolve(snapshot(committedShareIds.length > 0, committedShareIds)));
+
+    let resolveFirstUpdate;
+    let sawFirstCall = false;
+    const updateCalls = [];
+    update.mockImplementation((_ref, updates) => {
+      updateCalls.push(updates);
+      committedShareIds = updates['users/uid-1/meta/shareIds'];
+      if (!sawFirstCall) {
+        sawFirstCall = true;
+        return new Promise(resolve => { resolveFirstUpdate = resolve; });
+      }
+      return Promise.resolve();
+    });
+
+    const publishA = publishRoadmapShare('uid-1', roadmapSnapshot, 'Roadmap A');
+    const publishB = publishRoadmapShare('uid-1', roadmapSnapshot, 'Roadmap B');
+
+    // Give both calls a chance to reach their update() call (each goes
+    // through an extra getShareIds()/withTimeout() hop first, so this needs
+    // more than a couple of microtask ticks) before letting the first (slow)
+    // write settle. resolveFirstUpdate() is always called, even if the
+    // waitFor assertion fails — the queue is a module-level singleton shared
+    // across every test in this file, so leaving it unresolved would hang
+    // every later test's mutation forever.
+    try {
+      await vi.waitFor(() => expect(updateCalls.length).toBe(1));
+    } finally {
+      resolveFirstUpdate();
+    }
+
+    const [shareIdA, shareIdB] = await Promise.all([publishA, publishB]);
+
+    const lastCall = updateCalls[updateCalls.length - 1];
+    expect(lastCall['users/uid-1/meta/shareIds']).toEqual(
+      expect.arrayContaining([shareIdA, shareIdB])
+    );
+  });
+
+  it('two overlapping revokeRoadmapShare() calls for different share ids both end up removed from shareIds', async () => {
+    let committedShareIds = ['share-a', 'share-b'];
+    get.mockImplementation(() => Promise.resolve(snapshot(committedShareIds.length > 0, committedShareIds)));
+
+    let resolveFirstUpdate;
+    let sawFirstCall = false;
+    const updateCalls = [];
+    update.mockImplementation((_ref, updates) => {
+      updateCalls.push(updates);
+      committedShareIds = updates['users/uid-1/meta/shareIds'];
+      if (!sawFirstCall) {
+        sawFirstCall = true;
+        return new Promise(resolve => { resolveFirstUpdate = resolve; });
+      }
+      return Promise.resolve();
+    });
+
+    const revokeA = revokeRoadmapShare('uid-1', 'share-a');
+    const revokeB = revokeRoadmapShare('uid-1', 'share-b');
+
+    try {
+      await vi.waitFor(() => expect(updateCalls.length).toBe(1));
+    } finally {
+      resolveFirstUpdate();
+    }
+
+    await Promise.all([revokeA, revokeB]);
+
+    const lastCall = updateCalls[updateCalls.length - 1];
+    expect(lastCall['users/uid-1/meta/shareIds']).toEqual([]);
+  });
+});
+
 describe('listMyShares', () => {
   it("returns the current user's published roadmaps, merging each id with its snapshot", async () => {
     get.mockImplementation((_ref) => {
