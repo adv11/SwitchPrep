@@ -3632,10 +3632,12 @@ a.brand:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 
 .resource-check-status.reachable { color: var(--color-success); }
 .resource-check-status.error { color: var(--color-danger); }
 
-/* Issue #12B — link-type badge, one color per detectLinkType() result
-   (src/ui/utils/linkDetector.js). Colors match the issue's spec table;
-   each pair is tuned per-theme via app.css's dark-mode :root override block
-   the same way every other semantic color token is. */
+/* Issue #12B — link-type badge, one per detectLinkType() result
+   (src/ui/utils/linkDetector.js). Issue #353: per-type hex colors (predating the v2
+   "Modernist" mono-scheme rule, design-system.md §2) collapsed to the shared mono
+   scheme — visual distinction between link types now comes from each badge's own
+   icon (linkDetector.js's LINK_TYPE_META), not color. `.link-badge-github` was
+   already this shape and is the template every other type now matches. */
 .link-badge {
   display: inline-flex;
   align-items: center;
@@ -3648,22 +3650,7 @@ a.brand:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 
   border: 1px solid var(--color-border);
   color: var(--color-text-muted);
 }
-/* intentional: per-link-type colors, light-mode half of the pair described above (issue #116) */
-.link-badge-youtube { color: #dc2626; border-color: #fecaca; }
 .link-badge-github { color: var(--color-text); background: var(--color-border); border-color: var(--color-border); }
-.link-badge-google-doc,
-.link-badge-google-drive { color: #2563eb; border-color: #bfdbfe; }
-.link-badge-medium { color: #16a34a; border-color: #bbf7d0; }
-.link-badge-stackoverflow { color: #ea580c; border-color: #fed7aa; }
-.link-badge-notion,
-.link-badge-article { color: var(--color-text-muted); }
-
-/* intentional: dark-mode half of the per-link-type pair described above (issue #116) */
-:root[data-theme='dark'] .link-badge-youtube { color: #f87171; border-color: #5b2330; }
-:root[data-theme='dark'] .link-badge-google-doc,
-:root[data-theme='dark'] .link-badge-google-drive { color: #60a5fa; border-color: #1e3a5f; }
-:root[data-theme='dark'] .link-badge-medium { color: #4ade80; border-color: #1e4620; }
-:root[data-theme='dark'] .link-badge-stackoverflow { color: #fb923c; border-color: #5a3113; }
 
 .muted { color: var(--color-text-muted); }
 .small { font-size: 12px; }
